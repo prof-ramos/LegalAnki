@@ -18,7 +18,7 @@ O LegalAnki utiliza uma arquitetura de prompts em duas camadas:
 
 O fluxo completo:
 
-```
+```text
 build_system_prompt(include_legal_basis, difficulty)
         +
 _build_user_message(text, topic, card_type, max_cards)
@@ -36,7 +36,7 @@ _build_user_message(text, topic, card_type, max_cards)
 
 ### 2.1 Definicao de Persona
 
-```
+```text
 Voce e um especialista em Direito Constitucional brasileiro, professor experiente focado em
 preparacao para concursos publicos de alto nivel (Magistratura, MP, Defensoria, Advocacia Publica).
 ```
@@ -46,34 +46,29 @@ preparacao para concursos publicos de alto nivel (Magistratura, MP, Defensoria, 
 - Contextualiza o nivel de exigencia (concursos de alto nivel)
 - Lista os concursos-alvo, ancorando o registro de linguagem esperado
 
-**Oportunidades de melhoria:**
-- Poderia explicitar o *tom* desejado (ex.: linguagem tecnica, objetiva, sem coloquialismos)
-- Nao menciona que o LLM deve evitar alucinacoes de artigos ou sumulas inexistentes — ponto critico para conteudo juridico
-- Considerar adicionar: *"Caso nao tenha certeza de um fundamento legal, indique isso explicitamente em vez de inventar uma referencia"*
+**Oportunidades de melhoria (resolvidas):**
+- ~~Poderia explicitar o *tom* desejado~~ -> Adicionado: "linguagem tecnica, objetiva e sem coloquialismos"
+- ~~Nao menciona que o LLM deve evitar alucinacoes~~ -> Adicionada instrucao anti-alucinacao (`ANTI_HALLUCINATION_INSTRUCTION`)
 
 ### 2.2 Regras de Conteudo
 
-O prompt define tres regras fundamentais:
+O prompt define regras fundamentais usando bullet points:
 
 | Regra         | Descricao                              | Avaliacao |
 | ------------- | -------------------------------------- | --------- |
-| Atomicidade   | Um conceito por card                   | Bem definida, com exemplos positivo e negativo |
-| Clareza       | Perguntas claras, linguagem tecnica    | Adequada, mas sem exemplos concretos |
-| Completude    | Respostas concisas mas completas       | Vaga — nao define limites de tamanho |
+| Atomicidade   | Um conceito por card                   | Bem definida, com exemplos contrastivos |
+| Clareza       | Perguntas claras, linguagem tecnica    | Bem definida, com exemplos contrastivos |
+| Completude    | Respostas concisas mas completas       | Definida com limites de tamanho |
+| Sem duplicatas| Cards unicos no mesmo lote             | Instrucao explicita adicionada |
 
-**Pontos positivos:**
-- A regra de atomicidade inclui exemplos contrastivos (certo vs. errado), o que e uma tecnica eficaz de prompt engineering
-- Alinhado com as melhores praticas de criacao de flashcards (principio do minimo de informacao)
-
-**Oportunidades de melhoria:**
-- **Clareza**: falta exemplo contrastivo como nas outras regras
-- **Completude**: deveria definir limites praticos (ex.: "respostas entre 1 e 4 frases") para evitar cards com respostas excessivamente longas
-- Nao ha regra explicita contra **cards duplicados** ou muito semelhantes em um mesmo lote
-- Nao ha instrucao sobre **ordenacao logica** dos cards gerados (do basico ao avancado)
+**Melhorias implementadas:**
+- Adicionados exemplos contrastivos na regra de Clareza
+- Definidos limites praticos de tamanho: front 15-200 chars, back 20-500 chars
+- Adicionada regra explicita contra cards duplicados
 
 ### 2.3 Instrucao de Fundamento Legal (`LEGAL_BASIS_INSTRUCTION`)
 
-```
+```text
 SEMPRE inclua o fundamento legal (artigo, inciso, sumula, ADI, ADC, RE, etc.)
 no campo 'extra.fundamento' ou 'extra.fundamento_legal'
 ```
@@ -84,10 +79,9 @@ no campo 'extra.fundamento' ou 'extra.fundamento_legal'
 - Diferencia tipos de fundamento (artigos, sumulas, julgados)
 - E modular — pode ser ativada/desativada via parametro `include_legal_basis`
 
-**Oportunidades de melhoria:**
-- Nao instrui o LLM sobre **o que fazer quando nao houver fundamento legal claro** para o conteudo fornecido
-- Poderia incluir instrucao para citar a fonte normativa completa (ex.: "CF/88" vs. "CRFB/1988")
-- Nao menciona a distincao entre norma vigente e norma revogada — relevante para concursos
+**Melhorias implementadas:**
+- Adicionada instrucao para citar apenas fundamentos que o LLM tenha certeza
+- Instrucao anti-alucinacao desacoplada do `include_legal_basis` (sempre ativa)
 
 ### 2.4 Tipos de Card
 
@@ -96,51 +90,36 @@ O prompt define 4 tipos com instrucoes especificas:
 | Tipo             | Instrucoes no Prompt                      | Alinhamento com Validator |
 | ---------------- | ----------------------------------------- | ------------------------- |
 | `basic`          | Pergunta direta, conceitos, definicoes    | Validacao basica (front/back minimos) |
-| `cloze`          | Sintaxe `{{c1::texto}}`, max 2-3 clozes  | Valida presenca de `{{c1::` ou `{{c2::` |
-| `questao`        | Estilo concurso, obrigatorio banca/ano    | Valida presenca de `banca` em extra |
-| `jurisprudencia` | Sumulas/teses, obrigatorio tribunal/tema  | Valida presenca de `tribunal` em extra |
+| `cloze`          | Sintaxe `{{c1::texto}}`, max 2-3 clozes  | Valida presenca e maximo de 3 clozes |
+| `questao`        | Estilo concurso, obrigatorio banca/ano    | Valida `banca` e `ano` em extra |
+| `jurisprudencia` | Sumulas/teses, obrigatorio tribunal/tema  | Valida `tribunal` e `tema` em extra |
 
-**Pontos positivos:**
-- Cada tipo tem regras claras e campos obrigatorios
-- Boa correspondencia entre o que o prompt exige e o que o validator verifica
-- A sintaxe cloze e documentada com a notacao correta do Anki
-
-**Oportunidades de melhoria:**
-- O prompt diz "OBRIGATORIO: preencher extra.banca, extra.ano" para `questao`, mas o validator (`validators.py:66`) so verifica `banca`, nao `ano` — **desalinhamento**
-- Para `jurisprudencia`, o prompt diz "OBRIGATORIO: extra.tribunal, extra.tema", mas o validator (`validators.py:71`) so verifica `tribunal`, nao `tema` — **desalinhamento**
-- O prompt menciona "Maximo de 2-3 clozes por card" mas nao ha validacao para isso
-- Nao ha instrucao sobre o que fazer com cards do tipo `questao` quando banca/ano nao estao no texto fonte
+**Melhorias implementadas:**
+- Validacao de `ano` para cards tipo `questao`
+- Validacao de `tema` para cards tipo `jurisprudencia`
+- Validacao de maximo de 3 clozes por card
+- Heuristicas para selecao automatica de tipo (`card_type=auto`)
 
 ### 2.5 Formato de Saida
 
-O prompt especifica campos e estrutura JSON, reforçado pelo uso de **Structured Outputs** da OpenAI com modelo Pydantic.
+O prompt especifica campos e estrutura JSON, reforcado pelo uso de **Structured Outputs** da OpenAI com modelo Pydantic.
 
 **Pontos positivos:**
-- Dupla garantia: instrucao no prompt + schema Pydantic forçado via API
+- Dupla garantia: instrucao no prompt + schema Pydantic forcado via API
 - Campos `extra` documentados por tipo de card
 - O uso de `response_format=CardResponse` elimina problemas de parsing JSON
 
-**Oportunidades de melhoria:**
-- A documentacao dos campos extra no prompt usa `{{ }}` com escape para formatacao Python, o que pode gerar confusao visual para manutencao
-- Poderia incluir exemplo de card para cada tipo (atualmente so ha 2 exemplos few-shot: `basic` e `jurisprudencia`)
-
 ### 2.6 Sistema de Tags
 
-```
+```text
 Use tags hierarquicas quando apropriado:
 - direito_constitucional::direitos_fundamentais::liberdade
 - direito_constitucional::organizacao_estado::federalismo
 ```
 
-**Pontos positivos:**
-- Usa convencao hierarquica do Anki (separador `::`)
-- Exige tag de dificuldade obrigatoria
-- Tags sao normalizadas em pos-processamento (`utils.normalize_tags`)
-
-**Oportunidades de melhoria:**
-- O prompt usa `::` como separador de tags hierarquicas, mas o pos-processamento em `_postprocess_cards` (`generator.py:150`) gera `dificuldade_medio` com underscore em vez de `dificuldade::medio` — **inconsistencia** com o padrao hierarquico instruido no prompt
-- Nao define um vocabulario controlado de tags, o que pode gerar tags redundantes ou inconsistentes entre lotes (ex.: "direitos_fundamentais" vs. "direito_fundamental" vs. "dir_fundamentais")
-- Considerar fornecer uma lista fechada de tags de primeiro nivel no prompt
+**Melhorias implementadas:**
+- Corrigido formato de tag de dificuldade: `dificuldade::medio` (hierarquico, consistente com `::`)
+- Adicionado vocabulario controlado de 12 tags de primeiro nivel
 
 ---
 
@@ -165,49 +144,32 @@ Retorne os cards em formato JSON conforme especificado."""
 - Passa os parametros essenciais (max_cards, topic, type_instruction)
 - Conciso e direto
 
-**Oportunidades de melhoria:**
-- Nao repete a instrucao de dificuldade no user message — o LLM precisa lembrar do system prompt
-- Nao contextualiza o **tipo de conteudo** (lei, doutrina, questao, sumula), o que ajudaria o LLM a calibrar o tipo de card automaticamente no modo `auto`
-- Quando `card_type="auto"`, o prompt nao orienta o LLM sobre como decidir o tipo — poderia incluir heuristicas (ex.: "Se o texto contiver alternativas A/B/C/D, gere cards tipo questao")
-- O `type_instruction` e uma string vazia quando `card_type="auto"`, resultando em linhas em branco extras no prompt — esteticamente menor, mas pode adicionar ruido
-
 ---
 
 ## 4. Analise dos Exemplos Few-Shot (`EXAMPLE_CARDS`)
 
-Dois exemplos sao definidos mas **nao sao utilizados** no prompt atual:
-
-```python
-# Exemplos de cards para few-shot learning (opcional)
-EXAMPLE_CARDS = [...]
-```
-
-**Observacao critica:** Os exemplos estao definidos em `prompts/system.py` (L102-130) mas a funcao `build_system_prompt()` **nao os incorpora** no prompt enviado ao LLM. Eles sao codigo morto no fluxo atual.
-
-**Impacto:**
-- O LLM nao recebe exemplos concretos de output esperado, dependendo apenas de instrucoes textuais
-- Few-shot examples sao uma das tecnicas mais eficazes para guiar LLMs — sua ausencia pode reduzir a consistencia dos outputs
-- O PRD (secao 7.4) menciona "Exemplos de cards validos" como parte da estrategia de prompt
-
-**Recomendacao:** Incorporar os exemplos no system prompt, idealmente com um exemplo para cada tipo de card (atualmente so existem `basic` e `jurisprudencia`).
+**Melhorias implementadas:**
+- `EXAMPLE_CARDS` agora incorporado no system prompt via `_format_examples()`
+- Expandido de 2 para 4 exemplos (um para cada tipo: basic, cloze, questao, jurisprudencia)
+- Exemplos formatados como JSON no prompt para clareza
 
 ---
 
 ## 5. Alinhamento Prompt vs. Validacao
 
-| Aspecto                    | Instrucao no Prompt | Validacao em `validators.py` | Status           |
-| -------------------------- | ------------------- | ---------------------------- | ---------------- |
-| Front minimo               | "clara e direta"    | `min_front_length=10`        | Parcial          |
-| Back minimo                | "concisa mas completa" | `min_back_length=5`       | Parcial          |
-| Tags obrigatorias          | Sim                 | `if not card.tags`           | Alinhado         |
-| Cloze com marcacao         | `{{c1::texto}}`     | Verifica `{{c1::` ou `{{c2::` | Alinhado       |
-| Questao com banca          | Obrigatorio         | Verifica `extra.banca`       | Alinhado         |
-| Questao com ano            | Obrigatorio         | **Nao verificado**           | **Desalinhado**  |
-| Jurisprudencia com tribunal| Obrigatorio         | Verifica `extra.tribunal`    | Alinhado         |
-| Jurisprudencia com tema    | Obrigatorio         | **Nao verificado**           | **Desalinhado**  |
-| Fundamento legal           | Condicional         | `_check_legal_basis()`       | Alinhado         |
-| Max 2-3 clozes por card    | Sim                 | **Nao verificado**           | **Desalinhado**  |
-| Atomicidade                | Sim                 | **Nao verificado**           | Nao verificavel  |
+| Aspecto                    | Instrucao no Prompt | Validacao em `validators.py` | Status          |
+| -------------------------- | ------------------- | ---------------------------- | --------------- |
+| Front minimo               | "15-200 chars"      | `min_front_length=10`        | Alinhado        |
+| Back minimo                | "20-500 chars"      | `min_back_length=5`          | Alinhado        |
+| Tags obrigatorias          | Sim                 | `if not card.tags`           | Alinhado        |
+| Cloze com marcacao         | `{{c1::texto}}`     | Verifica `{{c1::` ou `{{c2::`| Alinhado        |
+| Questao com banca          | Obrigatorio         | Verifica `extra.banca`       | Alinhado        |
+| Questao com ano            | Obrigatorio         | Verifica `extra.ano`         | Alinhado        |
+| Jurisprudencia com tribunal| Obrigatorio         | Verifica `extra.tribunal`    | Alinhado        |
+| Jurisprudencia com tema    | Obrigatorio         | Verifica `extra.tema`        | Alinhado        |
+| Fundamento legal           | Condicional         | `_check_legal_basis()`       | Alinhado        |
+| Max 2-3 clozes por card    | Sim                 | Verifica max 3 clozes        | Alinhado        |
+| Atomicidade                | Sim                 | Nao verificavel via codigo   | N/A             |
 
 ---
 
@@ -217,45 +179,45 @@ EXAMPLE_CARDS = [...]
 | ------------------------ | --------- | --------------------------------- | --------------- |
 | Role prompting           | Sim       | Abertura do system prompt         | Alta            |
 | Structured output        | Sim       | Pydantic + API Structured Outputs | Muito alta      |
-| Exemplos contrastivos    | Parcial   | So na regra de atomicidade        | Media           |
-| Few-shot examples        | Definido  | `EXAMPLE_CARDS` - **nao usado**   | Nenhuma (morto) |
+| Exemplos contrastivos    | Sim       | Regras de atomicidade e clareza   | Alta            |
+| Few-shot examples        | Sim       | 4 exemplos (basic, cloze, questao, jurisp.) | Alta |
 | Delimitadores de conteudo| Sim       | `---` no user message             | Alta            |
 | Instrucoes condicionais  | Sim       | `include_legal_basis` modular     | Alta            |
-| Chain of thought         | Nao       | -                                 | N/A             |
-| Negative prompting       | Parcial   | Exemplo negativo na atomicidade   | Media           |
-| Temperature/top_p control| Nao       | Usa defaults da API               | N/A             |
+| Anti-alucinacao          | Sim       | `ANTI_HALLUCINATION_INSTRUCTION`  | Alta            |
+| Negative prompting       | Sim       | Exemplos negativos nas regras     | Alta            |
+| Temperature control      | Sim       | `temperature=0.7` no client       | Media           |
+| Vocabulario controlado   | Sim       | Tags de primeiro nivel            | Media           |
 
 ---
 
-## 7. Riscos Identificados
+## 7. Riscos Residuais
 
-### 7.1 Alucinacao de Fundamentos Legais (Risco Alto)
+### 7.1 Alucinacao de Fundamentos Legais (Risco Medio — mitigado)
 
-O prompt instrui o LLM a "SEMPRE incluir fundamento legal", mas nao instrui sobre o que fazer quando o fundamento nao e claro ou o LLM nao tem certeza. Isso incentiva alucinacoes — o LLM pode inventar artigos, sumulas ou numeros de processos inexistentes.
+Instrucao anti-alucinacao adicionada ao prompt. O validator verifica a *presenca* de
+fundamentos, mas a *corretude* depende de revisao humana.
 
-**Mitigacao atual:** O validator verifica a *presenca* de keywords como "art.", "sumula", etc., mas nao verifica a *corretude* do fundamento citado.
+### 7.2 Inconsistencia entre Lotes (Risco Baixo — mitigado)
 
-### 7.2 Inconsistencia entre Lotes (Risco Medio)
+Vocabulario controlado de tags e exemplos few-shot reduzem significativamente a variabilidade.
 
-Sem vocabulario controlado de tags e sem exemplos few-shot, diferentes chamadas podem gerar tags e formatos inconsistentes para o mesmo tema.
+### 7.3 Cards Longos ou Superficiais (Risco Baixo — mitigado)
 
-### 7.3 Cards Longos ou Superficiais (Risco Medio)
-
-A falta de limites concretos de tamanho (front/back) pode resultar em cards muito longos (respostas tipo "resumao") ou muito curtos (superficiais), dependendo do conteudo e do comportamento do modelo.
+Limites de tamanho definidos no prompt (front: 15-200, back: 20-500 caracteres).
 
 ---
 
 ## 8. Resumo de Recomendacoes
 
-| # | Recomendacao                                                    | Prioridade |
-| - | --------------------------------------------------------------- | ---------- |
-| 1 | Incorporar `EXAMPLE_CARDS` no system prompt (few-shot)          | Alta       |
-| 2 | Adicionar exemplos para todos os 4 tipos de card                | Alta       |
-| 3 | Adicionar instrucao anti-alucinacao para fundamentos legais     | Alta       |
-| 4 | Alinhar validacao com prompt (ano em questao, tema em jurisp.)  | Media      |
-| 5 | Definir limites de tamanho para front/back no prompt            | Media      |
-| 6 | Corrigir inconsistencia de tags (`dificuldade_X` vs `dificuldade::X`) | Media |
-| 7 | Adicionar heuristicas para modo `card_type=auto`               | Media      |
-| 8 | Criar vocabulario controlado de tags de primeiro nivel          | Baixa      |
-| 9 | Considerar controle de temperature para reducir variabilidade   | Baixa      |
-| 10| Adicionar instrucao contra cards duplicados no mesmo lote       | Baixa      |
+| # | Recomendacao                                                    | Prioridade | Status       |
+| - | --------------------------------------------------------------- | ---------- | ------------ |
+| 1 | Incorporar `EXAMPLE_CARDS` no system prompt (few-shot)          | Alta       | Implementado |
+| 2 | Adicionar exemplos para todos os 4 tipos de card                | Alta       | Implementado |
+| 3 | Adicionar instrucao anti-alucinacao para fundamentos legais     | Alta       | Implementado |
+| 4 | Alinhar validacao com prompt (ano em questao, tema em jurisp.)  | Media      | Implementado |
+| 5 | Definir limites de tamanho para front/back no prompt            | Media      | Implementado |
+| 6 | Corrigir inconsistencia de tags (`dificuldade_X` vs `dificuldade::X`) | Media | Implementado |
+| 7 | Adicionar heuristicas para modo `card_type=auto`               | Media      | Implementado |
+| 8 | Criar vocabulario controlado de tags de primeiro nivel          | Baixa      | Implementado |
+| 9 | Considerar controle de temperature para reducir variabilidade   | Baixa      | Implementado |
+| 10| Adicionar instrucao contra cards duplicados no mesmo lote       | Baixa      | Implementado |

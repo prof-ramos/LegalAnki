@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from .config import CardType
@@ -63,8 +64,6 @@ def validate_card(
             errors.append("Card cloze sem marcação de lacuna ({{c1::...}})")
         else:
             # Verifica máximo de 3 clozes por card
-            import re
-
             cloze_count = len(re.findall(r"\{\{c\d+::", card.front))
             if cloze_count > 3:
                 errors.append(

@@ -3,23 +3,23 @@
 import json
 
 LEGAL_BASIS_INSTRUCTION = """
-4. **Fundamento legal**: SEMPRE inclua o fundamento legal (artigo, inciso, súmula, ADI, ADC, RE, etc.)
-   no campo 'extra.fundamento' ou 'extra.fundamento_legal'
-   - Para artigos: cite o dispositivo completo (ex: "Art. 5º, LXIII, CF/88")
-   - Para súmulas: cite o número e tribunal (ex: "Súmula Vinculante 11 - STF")
-   - Para julgados: cite o número do processo quando disponível
-   - **IMPORTANTE**: Cite APENAS fundamentos legais que você tem certeza que existem.
-     Se não tiver certeza do dispositivo exato, indique o tema geral
-     (ex: "CF/88, Título II - Dos Direitos e Garantias Fundamentais") em vez de
-     inventar um número de artigo ou súmula.
+- **Fundamento legal**: SEMPRE inclua o fundamento legal (artigo, inciso, súmula, ADI, ADC, RE, etc.)
+  no campo 'extra.fundamento' ou 'extra.fundamento_legal'
+  - Para artigos: cite o dispositivo completo (ex: "Art. 5º, LXIII, CF/88")
+  - Para súmulas: cite o número e tribunal (ex: "Súmula Vinculante 11 - STF")
+  - Para julgados: cite o número do processo quando disponível
+  - **IMPORTANTE**: Cite APENAS fundamentos legais que você tem certeza que existem.
+    Se não tiver certeza do dispositivo exato, indique o tema geral
+    (ex: "CF/88, Título II - Dos Direitos e Garantias Fundamentais") em vez de
+    inventar um número de artigo ou súmula.
 """
 
 ANTI_HALLUCINATION_INSTRUCTION = """
-5. **Precisão**: NÃO invente ou fabrique referências legais.
-   - Cite apenas artigos, súmulas e julgados que existam de fato
-   - Se não souber o número exato de um artigo, use referência genérica
-     (ex: "CF/88" em vez de um artigo específico que pode não existir)
-   - Prefira omitir uma referência a fabricar uma incorreta
+- **Precisão**: NÃO invente ou fabrique referências legais.
+  - Cite apenas artigos, súmulas e julgados que existam de fato
+  - Se não souber o número exato de um artigo, use referência genérica
+    (ex: "CF/88" em vez de um artigo específico que pode não existir)
+  - Prefira omitir uma referência a fabricar uma incorreta
 """
 
 AUTO_TYPE_HEURISTICS = """
@@ -56,27 +56,27 @@ Sua tarefa é gerar flashcards Anki de alta qualidade seguindo estas regras:
 
 ## REGRAS DE CONTEÚDO
 
-1. **Atomicidade**: Cada card deve testar UMA única ideia ou conceito
-   - NÃO FAÇA: "Quais são os direitos fundamentais?" (muito amplo)
-   - FAÇA: "Qual é o fundamento constitucional do direito ao silêncio?" (específico)
+- **Atomicidade**: Cada card deve testar UMA única ideia ou conceito
+  - NÃO FAÇA: "Quais são os direitos fundamentais?" (muito amplo)
+  - FAÇA: "Qual é o fundamento constitucional do direito ao silêncio?" (específico)
 
-2. **Clareza**: A pergunta (front) deve ser clara e direta
-   - Use linguagem técnica adequada ao nível de concurso
-   - Evite ambiguidades
-   - NÃO FAÇA: "Fale sobre o HC" (vago)
-   - FAÇA: "Qual o objeto do habeas corpus previsto no art. 5º, LXVIII, CF/88?" (preciso)
+- **Clareza**: A pergunta (front) deve ser clara e direta
+  - Use linguagem técnica adequada ao nível de concurso
+  - Evite ambiguidades
+  - NÃO FAÇA: "Fale sobre o HC" (vago)
+  - FAÇA: "Qual o objeto do habeas corpus previsto no art. 5º, LXVIII, CF/88?" (preciso)
 
-3. **Completude**: A resposta (back) deve ser concisa mas completa
-   - Inclua todos os elementos necessários para uma resposta correta em prova
-   - Front: entre 15 e 200 caracteres (perguntas objetivas)
-   - Back: entre 20 e 500 caracteres (respostas completas mas não excessivas)
+- **Completude**: A resposta (back) deve ser concisa mas completa
+  - Inclua todos os elementos necessários para uma resposta correta em prova
+  - Front: entre 15 e 200 caracteres (perguntas objetivas)
+  - Back: entre 20 e 500 caracteres (respostas completas mas não excessivas)
 
 {legal_basis_instruction}
 
 {anti_hallucination_instruction}
 
-6. **Sem duplicatas**: Cada card deve testar um aspecto diferente. Não gere cards com
-   perguntas ou respostas praticamente idênticas no mesmo lote.
+- **Sem duplicatas**: Cada card deve testar um aspecto diferente. Não gere cards com
+  perguntas ou respostas praticamente idênticas no mesmo lote.
 
 ## TIPOS DE CARD
 
@@ -205,8 +205,11 @@ def _format_examples() -> str:
     return "\n".join(lines)
 
 
+_VALID_DIFFICULTIES = {"facil", "medio", "dificil"}
+
+
 def build_system_prompt(
-    include_legal_basis: bool = True, difficulty: str = "medio"
+    *, include_legal_basis: bool = True, difficulty: str = "medio"
 ) -> str:
     """
     Constrói o system prompt para o LLM.
@@ -217,13 +220,21 @@ def build_system_prompt(
 
     Returns:
         System prompt formatado
+
+    Raises:
+        ValueError: Se difficulty não for um valor válido
     """
+    if difficulty not in _VALID_DIFFICULTIES:
+        raise ValueError(
+            f"difficulty deve ser um de {sorted(_VALID_DIFFICULTIES)}, "
+            f"recebido: '{difficulty}'"
+        )
+
     legal_instruction = LEGAL_BASIS_INSTRUCTION if include_legal_basis else ""
-    anti_hallucination = ANTI_HALLUCINATION_INSTRUCTION if include_legal_basis else ""
 
     return SYSTEM_PROMPT_BASE.format(
         legal_basis_instruction=legal_instruction,
-        anti_hallucination_instruction=anti_hallucination,
+        anti_hallucination_instruction=ANTI_HALLUCINATION_INSTRUCTION,
         auto_type_heuristics=AUTO_TYPE_HEURISTICS,
         tags_vocabulary=TAGS_VOCABULARY,
         dificuldade=difficulty,
