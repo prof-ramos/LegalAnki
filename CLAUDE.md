@@ -11,7 +11,8 @@ uv run pytest tests/ -v              # rodar testes
 uv run pytest tests/ --cov=src       # testes com cobertura
 ruff check src/ tests/               # lint
 ruff format src/ tests/              # formatar
-uv run python main.py "texto" --topic direitos_fundamentais  # CLI
+uv run python main.py "texto" --topic direitos_fundamentais  # CLI (texto direto)
+uv run python main.py documento.pdf --topic direitos_fundamentais  # CLI (arquivo)
 ```
 
 ## Estilo
@@ -27,13 +28,14 @@ uv run python main.py "texto" --topic direitos_fundamentais  # CLI
 
 ```
 src/legal_anki/
+  parsers.py         -> extracao de texto de PDF, DOCX, CSV, TXT (input)
   prompts/system.py  -> system prompt + few-shot (ponto critico de qualidade)
   generator.py       -> orquestra: prompt -> LLM -> pos-processamento
   validators.py      -> validacao de negocio pos-LLM
   models.py          -> AnkiCard, CardResponse (Pydantic) + templates genanki
   llm/protocol.py    -> interface LLMClient (Protocol)
   llm/openai_client.py -> implementacao OpenAI + retry (Tenacity)
-  exporters.py       -> CSV, TSV, JSON, APKG
+  exporters.py       -> CSV, TSV, JSON, APKG (output)
   config.py          -> Settings via pydantic-settings + .env
 ```
 
