@@ -49,12 +49,13 @@ src/legal_anki/
 
 ## Tipos de Card
 
-| Tipo             | Campos `extra` obrigatorios | Validacao               |
-| ---------------- | --------------------------- | ----------------------- |
-| `basic`          | `fundamento` (opcional)     | front/back minimos      |
-| `cloze`          | `fundamento` (opcional)     | requer `{{c1::}}`, max 3|
-| `questao`        | `banca`, `ano`              | ambos obrigatorios      |
-| `jurisprudencia` | `tribunal`, `tema`          | ambos obrigatorios      |
+| Tipo             | Campos `extra` obrigatorios | Validacao                  |
+| ---------------- | --------------------------- | -------------------------- |
+| `basic`          | `fundamento` (opcional)     | front min 15, back min 20  |
+| `basic_reversed` | `fundamento` (opcional)     | front min 15, back min 20  |
+| `cloze`          | `fundamento` (opcional)     | requer `{{cN::}}`, max 3   |
+| `questao`        | `banca`, `ano`              | ambos obrigatorios         |
+| `jurisprudencia` | `tribunal`, `tema`          | ambos obrigatorios         |
 
 ## Testes
 
