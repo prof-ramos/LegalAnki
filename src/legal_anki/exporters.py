@@ -146,10 +146,13 @@ def export_to_tsv(
 
     lines = []
 
+    tab = "\t"
     for card in cards:
         tags_str = _sanitize_text(" ".join(card.tags))
         # TSV simples: front\tback\ttags
-        line = f"{_sanitize_text(card.front, separator_char='\t')}\t{_sanitize_text(card.back, separator_char='\t')}\t{tags_str}"
+        front = _sanitize_text(card.front, separator_char=tab)
+        back = _sanitize_text(card.back, separator_char=tab)
+        line = f"{front}\t{back}\t{tags_str}"
         lines.append(line)
 
     tsv_content = "\n".join(lines)
