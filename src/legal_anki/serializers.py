@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .generator import AnkiCard
+    from .models import AnkiCard
 
 
 def map_card_to_fields(card: "AnkiCard") -> list[str]:

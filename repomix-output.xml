@@ -40,8 +40,18 @@ The content is organized as follows:
 </file_summary>
 
 <directory_structure>
+.claude/
+  .worker-tracking/
+    ad82ed6c/
+      hivemind_find.marker
+      hivemind_store.marker
+      swarmmail_init.marker
 src/
   legal_anki/
+    llm/
+      __init__.py
+      openai_client.py
+      protocol.py
     prompts/
       __init__.py
       system.py
@@ -51,23 +61,282 @@ src/
     exporters.py
     generator.py
     models.py
+    serializers.py
     utils.py
     validators.py
 tests/
   conftest.py
   test_exporters.py
+  test_llm_client.py
   test_utils.py
   test_validators.py
 .env.example
 .python-version
+analisecoderabbit_debug.md
 main.py
 PRD.md
 pyproject.toml
 README.md
+ROADMAP.md
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path=".claude/.worker-tracking/ad82ed6c/hivemind_find.marker">
+2026-02-08T08:39:36.083Z
+</file>
+
+<file path=".claude/.worker-tracking/ad82ed6c/hivemind_store.marker">
+2026-02-08T08:40:40.300Z
+</file>
+
+<file path=".claude/.worker-tracking/ad82ed6c/swarmmail_init.marker">
+2026-02-08T08:41:29.845Z
+</file>
+
+<file path="analisecoderabbit_debug.md">
+Starting CodeRabbit review in plain text mode...
+
+Connecting to review service
+Setting up
+Analyzing
+Reviewing
+
+============================================================================
+File: tests/test_validators.py
+Line: 42
+Type: nitpick
+
+Prompt for AI Agent:
+In @tests/test_validators.py at line 42, Multiple tests duplicate the same local import "from legal_anki.models import AnkiCard"; move that import to the top-level imports of the module (alongside the other imports) and remove the repeated in-function imports inside the test functions (the local occurrences referencing AnkiCard) so all tests use the single top-level AnkiCard import.
+</file>
+
+<file path="ROADMAP.md">
+# 🗺️ Roadmap LegalAnki
+
+Este documento descreve a visão de futuro do **LegalAnki** e os marcos planejados para transformar o estudo jurídico em uma experiência automatizada e de alta performance.
+
+---
+
+## 🚀 Fase 1: Estabilização e UX (v1.x)
+
+_Foco: Robustez do sistema atual e facilidade de uso via CLI._
+
+- [x] **Melhorias CSV:** Validação, sanitização e logging robusto.
+- [x] **Interface CLI:** Execução via terminal com suporte a arquivos e texto.
+- [ ] **Templates Premium:** Implementação de CSS moderno e responsivo para os modelos de cards no Anki.
+- [ ] **Integração Anki-Connect:**
+  - Auto-sincronização (`sync`) após exportação bem-sucedida.
+  - Verificação de existência de decks e modelos antes da geração.
+- [ ] **Documentação:** Guia completo de instalação e exemplos de uso em casos reais (Direito Administrativo, Penal, etc).
+
+---
+
+## 📦 Fase 2: Multimídia e Novos Formatos (v2.x)
+
+_Foco: Expansão de funcionalidades e suporte nativo a arquivos Anki._
+
+- [ ] **Exportação APKG Nativa:**
+  - Suporte completo a modelos customizados sem dependência externa de importação.
+  - Suporte a inclusão de mídia (imagens e áudio) via `genanki.Package.media_files`.
+- [ ] **Novos Tipos de Cards:**
+  - `Cloze` (Omissão de Palavras) para memorização de textos de lei seca.
+  - Cards de "Vem na Prova" com estatísticas de incidência (extraídas via LLM).
+- [ ] **Parsing Inteligente:**
+  - Extração de texto diretamente de PDFs de julgados (Informativos STF/STJ) e Leis.
+  - Limpeza de "ruído" jurídico (cabeçalhos, rodapés) antes da geração.
+
+---
+
+## 🌐 Fase 3: Ecossistema e Interface (v3.x)
+
+_Foco: Escala, colaboração e facilidade multiplataforma._
+
+- [ ] **Web Review UI:** Interface simples (Streamlit/Vite) para revisar, editar e deletar cards gerados pela IA antes de exportar.
+- [ ] **LegalAnki Bot:** Integração com Telegram/Discord para enviar um trecho de lei e receber o arquivo CSV/APKG de volta.
+- [ ] **Loja de Prompts Sociais:** Possibilidade de escolher "estilos" de outros usuários (Ex: Prompts focados em Magistratura vs. Delegado).
+- [ ] **API Pública:** Wrapper para permitir que outros sites de cursos jurídicos integrem o botão "Gerar Cards" em seus materiais.
+
+---
+
+## ✅ Concluído
+
+- Estrutura base do projeto (PoC).
+- Abstração de LLM (OpenAI/Protocol).
+- Validação robusta de Pydantic.
+- Exportador CSV v1 sanitizado.
+- CLI v1 funcional.
+
+---
+
+> [!TIP]
+> Sugestões e contribuições são bem-vindas! Abra uma issue para discutirmos novas funcionalidades.
+</file>
+
+<file path="src/legal_anki/llm/__init__.py">
+"""Abstração de clientes LLM para geração de cards."""
+
+from .openai_client import OpenAILLMClient
+from .protocol import LLMClient
+
+__all__ = ["LLMClient", "OpenAILLMClient"]
+</file>
+
+<file path="src/legal_anki/llm/openai_client.py">
+"""Cliente OpenAI com retry usando Tenacity."""
+
+from __future__ import annotations
+
+import logging
+from typing import TypeVar
+
+from openai import APIConnectionError, APIError, OpenAI, RateLimitError
+from pydantic import BaseModel
+from tenacity import (
+    Retrying,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar("T", bound=BaseModel)
+
+
+class OpenAILLMClient:
+    """
+    Cliente OpenAI com retry e structured outputs.
+
+    Implementa o protocolo LLMClient usando a API da OpenAI com
+    retry automático via Tenacity para erros transientes.
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gpt-4o-2024-08-06",
+        max_retries: int = 3,
+    ):
+        """
+        Inicializa o cliente OpenAI.
+
+        Args:
+            api_key: Chave da API OpenAI
+            model: Modelo a usar (deve suportar structured outputs)
+            max_retries: Número máximo de tentativas em caso de erro
+        """
+        # Desabilita retry interno do SDK, Tenacity controla
+        self.client = OpenAI(api_key=api_key, max_retries=0)
+        self.model = model
+        self.max_retries = max_retries
+
+    def generate_structured(
+        self,
+        system_prompt: str,
+        user_message: str,
+        response_model: type[T],
+    ) -> T:
+        """
+        Gera resposta estruturada com retry automático.
+
+        Args:
+            system_prompt: Prompt do sistema
+            user_message: Mensagem do usuário
+            response_model: Modelo Pydantic para a resposta
+
+        Returns:
+            Instância do response_model parseada
+
+        Raises:
+            ValueError: Se o LLM não retornar resposta válida
+            APIError: Se todas as tentativas falharem
+        """
+        retryer = Retrying(
+            stop=stop_after_attempt(self.max_retries),
+            wait=wait_exponential_jitter(initial=1, max=30, jitter=2),
+            retry=retry_if_exception_type(
+                (APIError, RateLimitError, APIConnectionError)
+            ),
+            before_sleep=lambda rs: logger.warning(
+                "Retry %d/%d após erro: %s",
+                rs.attempt_number,
+                self.max_retries,
+                rs.outcome.exception(),
+            ),
+            reraise=True,
+        )
+        return retryer(
+            self._call_openai_api, system_prompt, user_message, response_model
+        )
+
+    def _call_openai_api(
+        self,
+        system_prompt: str,
+        user_message: str,
+        response_model: type[T],
+    ) -> T:
+        """Chamada direta à API da OpenAI."""
+        logger.debug("Chamando OpenAI API com modelo %s", self.model)
+
+        response = self.client.beta.chat.completions.parse(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            response_format=response_model,
+        )
+
+        result = response.choices[0].message.parsed
+
+        if not result:
+            refusal = response.choices[0].message.refusal
+            if refusal:
+                raise ValueError(f"LLM recusou gerar resposta: {refusal}")
+            raise ValueError("LLM não retornou resposta válida")
+
+        return result
+</file>
+
+<file path="src/legal_anki/llm/protocol.py">
+"""Protocolo (interface) para clientes LLM."""
+
+from typing import Protocol, TypeVar
+
+from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
+
+
+class LLMClient(Protocol):
+    """
+    Protocolo para clientes LLM.
+
+    Define a interface que qualquer implementação de cliente LLM deve seguir,
+    permitindo troca transparente de providers (OpenAI, Anthropic, local, etc.).
+    """
+
+    def generate_structured(
+        self,
+        system_prompt: str,
+        user_message: str,
+        response_model: type[T],
+    ) -> T:
+        """
+        Gera uma resposta estruturada usando um modelo Pydantic.
+
+        Args:
+            system_prompt: Prompt do sistema com instruções
+            user_message: Mensagem do usuário com o conteúdo
+            response_model: Classe Pydantic para deserializar a resposta
+
+        Returns:
+            Instância do response_model com a resposta parseada
+        """
+        ...
+</file>
 
 <file path="src/legal_anki/prompts/__init__.py">
 """Prompts para geração de cards Anki."""
@@ -223,11 +492,11 @@ from typing import TYPE_CHECKING, Any
 import requests
 
 from .config import settings
-from .exporters import map_card_to_fields
 from .models import get_model_for_card_type
+from .serializers import map_card_to_fields
 
 if TYPE_CHECKING:
-    from .generator import AnkiCard
+    from .models import AnkiCard
 
 logger = logging.getLogger(__name__)
 
@@ -444,6 +713,7 @@ class AnkiConnectClient:
 """Configurações e constantes do LegalAnki."""
 
 import random
+from enum import StrEnum
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -497,8 +767,7 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
-# Constantes para tipos de card
-class CardType:
+class CardType(StrEnum):
     """Tipos de card suportados."""
 
     BASIC = "basic"
@@ -507,18 +776,13 @@ class CardType:
     QUESTAO = "questao"
     JURISPRUDENCIA = "jurisprudencia"
 
-    ALL = [BASIC, BASIC_REVERSED, CLOZE, QUESTAO, JURISPRUDENCIA]
 
-
-# Constantes para dificuldade
-class Difficulty:
+class Difficulty(StrEnum):
     """Níveis de dificuldade."""
 
     FACIL = "facil"
     MEDIO = "medio"
     DIFICIL = "dificil"
-
-    ALL = [FACIL, MEDIO, DIFICIL]
 </file>
 
 <file path="src/legal_anki/exporters.py">
@@ -531,7 +795,7 @@ import csv
 import json
 import logging
 from datetime import datetime
-from io import StringIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -539,9 +803,10 @@ import genanki
 
 from .config import settings
 from .models import get_model_for_card_type
+from .serializers import map_card_to_fields
 
 if TYPE_CHECKING:
-    from .generator import AnkiCard
+    from .models import AnkiCard
 
 logger = logging.getLogger(__name__)
 
@@ -552,51 +817,16 @@ class ExportError(Exception):
     pass
 
 
-def map_card_to_fields(card: "AnkiCard") -> list[str]:
-    """
-    Mapeia um AnkiCard para os campos do modelo Anki correspondente.
-
-    Args:
-        card: Card a ser mapeado
-
-    Returns:
-        Lista de valores de campos na ordem correta para o modelo
-    """
-    extra = card.extra or {}
-
-    if card.card_type == "cloze":
-        return [
-            card.front,  # Text (com marcações cloze)
-            extra.get("fundamento", ""),  # Extra
-        ]
-
-    if card.card_type == "questao":
-        return [
-            card.front,
-            card.back,
-            extra.get("banca", ""),
-            extra.get("ano", ""),
-            extra.get("cargo", ""),
-            extra.get("fundamento", ""),
-        ]
-
-    if card.card_type == "jurisprudencia":
-        return [
-            card.front,
-            card.back,
-            extra.get("tribunal", ""),
-            extra.get("data_julgamento", ""),
-            extra.get("tema", ""),
-            extra.get("fundamento_legal", ""),
-        ]
-
-    # basic e basic_reversed
-    return [card.front, card.back]
-
-
 # =============================================================================
 # CSV Export (DEFAULT)
 # =============================================================================
+
+
+def _sanitize_csv_text(text: str | None) -> str:
+    """Remove quebras de linha e caracteres problemáticos para CSV."""
+    if not text:
+        return ""
+    return text.replace("\n", " ").replace("\r", "").replace("\t", " ").strip()
 
 
 def export_to_csv(
@@ -605,18 +835,25 @@ def export_to_csv(
     include_header: bool = True,
 ) -> str | Path:
     """
-    Exporta cards para CSV (formato default).
+    Exporta cards para CSV (formato default V1).
 
     Usa ponto-e-vírgula como separador para compatibilidade com Excel BR.
+    Sanitiza quebras de linha para evitar corrupção do CSV.
 
     Args:
-        cards: Lista de cards a exportar
+        cards: Lista não-vazia de cards a exportar
         output_path: Caminho do arquivo de saída. Se None, retorna string.
         include_header: Se True, inclui cabeçalho
 
     Returns:
         Path do arquivo criado ou string CSV
+
+    Raises:
+        ExportError: Se a lista de cards estiver vazia
     """
+    if not cards:
+        raise ExportError("Lista de cards vazia para exportação CSV")
+
     output = StringIO()
     writer = csv.writer(output, delimiter=";", quoting=csv.QUOTE_ALL)
 
@@ -624,24 +861,45 @@ def export_to_csv(
         writer.writerow(["front", "back", "tags", "type", "extra"])
 
     for card in cards:
-        tags_str = " ".join(card.tags)
-        extra_str = json.dumps(card.extra, ensure_ascii=False) if card.extra else ""
-        writer.writerow([card.front, card.back, tags_str, card.card_type, extra_str])
+        tags_str = _sanitize_csv_text(" ".join(card.tags))
+        extra_str = (
+            _sanitize_csv_text(json.dumps(card.extra, ensure_ascii=False))
+            if card.extra
+            else ""
+        )
+        writer.writerow(
+            [
+                _sanitize_csv_text(card.front),
+                _sanitize_csv_text(card.back),
+                tags_str,
+                card.card_type,
+                extra_str,
+            ]
+        )
 
     csv_content = output.getvalue()
 
     if output_path is None:
+        logger.info(f"Exportados {len(cards)} cards para CSV (string)")
         return csv_content
 
     output_path = Path(output_path)
     output_path.write_text(csv_content, encoding="utf-8")
-    logger.info(f"Exportado {len(cards)} cards para CSV: {output_path}")
+    logger.info(f"Exportados {len(cards)} cards para CSV: {output_path}")
     return output_path
 
 
 # =============================================================================
 # TSV Export
 # =============================================================================
+
+
+def _sanitize_tsv_text(text: str | None) -> str:
+    """Remove tabs e quebras de linha para TSV."""
+    if not text:
+        return ""
+    # Remove tabs (separador), newlines e r-returns
+    return text.replace("\t", " ").replace("\n", " ").replace("\r", " ").strip()
 
 
 def export_to_tsv(
@@ -663,9 +921,9 @@ def export_to_tsv(
     lines = []
 
     for card in cards:
-        tags_str = " ".join(card.tags)
+        tags_str = _sanitize_tsv_text(" ".join(card.tags))
         # TSV simples: front\tback\ttags
-        line = f"{card.front}\t{card.back}\t{tags_str}"
+        line = f"{_sanitize_tsv_text(card.front)}\t{_sanitize_tsv_text(card.back)}\t{tags_str}"
         lines.append(line)
 
     tsv_content = "\n".join(lines)
@@ -781,7 +1039,7 @@ def export_to_apkg_base64(
     deck_name: str,
 ) -> str:
     """
-    Exporta cards para APKG em formato base64.
+    Exporta cards para APKG em formato base64 usando BytesIO (sem tempfile).
 
     Útil para APIs e bots que precisam transmitir o arquivo.
 
@@ -792,13 +1050,36 @@ def export_to_apkg_base64(
     Returns:
         String base64 do arquivo .apkg
     """
-    import tempfile
+    deck = genanki.Deck(
+        deck_id=settings.anki_deck_id,
+        name=deck_name,
+    )
 
-    with tempfile.NamedTemporaryFile(suffix=".apkg", delete=True) as tmp:
-        export_to_apkg(cards, deck_name, tmp.name)
-        tmp.seek(0)
-        content = Path(tmp.name).read_bytes()
-        return base64.b64encode(content).decode("utf-8")
+    # Cache de modelos
+    models_cache: dict[str, genanki.Model] = {}
+
+    for card in cards:
+        if card.card_type not in models_cache:
+            models_cache[card.card_type] = get_model_for_card_type(card.card_type)
+
+        model = models_cache[card.card_type]
+        fields = map_card_to_fields(card)
+
+        note = genanki.Note(
+            model=model,
+            fields=fields,
+            tags=card.tags,
+        )
+        deck.add_note(note)
+
+    package = genanki.Package(deck)
+
+    # Usa BytesIO ao invés de tempfile
+    buffer = BytesIO()
+    package.write_to_file(buffer)
+    buffer.seek(0)
+
+    return base64.b64encode(buffer.read()).decode("utf-8")
 
 
 # =============================================================================
@@ -848,37 +1129,17 @@ def export_cards(
 from __future__ import annotations
 
 import logging
-from typing import Literal
-
-from openai import OpenAI
-from pydantic import BaseModel, Field
+from typing import TYPE_CHECKING
 
 from .config import settings
+from .models import AnkiCard, CardResponse
 from .prompts.system import build_system_prompt
 from .utils import normalize_tags
 
+if TYPE_CHECKING:
+    from .llm.protocol import LLMClient
+
 logger = logging.getLogger(__name__)
-
-
-class AnkiCard(BaseModel):
-    """Modelo de um card Anki gerado."""
-
-    front: str = Field(description="Texto da frente do card (pergunta ou cloze)")
-    back: str = Field(description="Texto do verso do card (resposta)")
-    card_type: Literal[
-        "basic", "basic_reversed", "cloze", "questao", "jurisprudencia"
-    ] = Field(description="Tipo do card")
-    tags: list[str] = Field(description="Lista de tags para o card")
-    extra: dict | None = Field(
-        default=None,
-        description="Campos adicionais dependendo do tipo (banca, ano, tribunal, fundamento, etc.)",
-    )
-
-
-class CardResponse(BaseModel):
-    """Resposta estruturada do LLM com lista de cards."""
-
-    cards: list[AnkiCard] = Field(description="Lista de cards gerados")
 
 
 class CardGenerationError(Exception):
@@ -894,6 +1155,7 @@ def generate_cards(
     include_legal_basis: bool = True,
     card_type: str = "auto",
     max_cards: int = 10,
+    llm_client: "LLMClient | None" = None,
 ) -> list[AnkiCard]:
     """
     Gera cards Anki a partir de um texto jurídico.
@@ -904,20 +1166,39 @@ def generate_cards(
         difficulty: Nível de dificuldade ("facil", "medio", "dificil")
         include_legal_basis: Se True, instrui o LLM a sempre incluir fundamento legal
         card_type: Tipo de card a gerar ("auto" para deixar o LLM decidir)
-        max_cards: Número máximo de cards a gerar
+        max_cards: Número máximo de cards a gerar (1-100)
+        llm_client: Cliente LLM opcional. Se None, usa OpenAI padrão com retry.
 
     Returns:
         Lista de AnkiCard gerados
 
     Raises:
+        ValueError: Se os parâmetros de entrada forem inválidos
         CardGenerationError: Se houver erro na geração
     """
-    if not settings.openai_api_key:
-        raise CardGenerationError(
-            "OPENAI_API_KEY não configurada. Configure em .env ou variável de ambiente."
-        )
+    # Validação de inputs
+    if not text or not text.strip():
+        raise ValueError("Parâmetro 'text' não pode ser vazio")
+    if not topic or not topic.strip():
+        raise ValueError("Parâmetro 'topic' não pode ser vazio")
+    if max_cards < 1 or max_cards > 100:
+        raise ValueError("Parâmetro 'max_cards' deve estar entre 1 e 100")
 
-    client = OpenAI(api_key=settings.openai_api_key)
+    text = text.strip()
+    topic = topic.strip()
+
+    if llm_client is None:
+        if not settings.openai_api_key:
+            raise CardGenerationError(
+                "OPENAI_API_KEY não configurada. Configure em .env ou variável de ambiente."
+            )
+
+        from .llm.openai_client import OpenAILLMClient
+
+        llm_client = OpenAILLMClient(
+            api_key=settings.openai_api_key,
+            model=settings.openai_model,
+        )
 
     system_prompt = build_system_prompt(
         include_legal_basis=include_legal_basis,
@@ -926,21 +1207,14 @@ def generate_cards(
 
     user_message = _build_user_message(text, topic, card_type, max_cards)
 
-    logger.info(
-        f"Gerando cards para tópico '{topic}' com modelo {settings.openai_model}"
-    )
+    logger.info(f"Gerando cards para tópico '{topic}'")
 
     try:
-        response = client.beta.chat.completions.parse(
-            model=settings.openai_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_message},
-            ],
-            response_format=CardResponse,
+        result = llm_client.generate_structured(
+            system_prompt=system_prompt,
+            user_message=user_message,
+            response_model=CardResponse,
         )
-
-        result = response.choices[0].message.parsed
 
         if not result or not result.cards:
             raise CardGenerationError("LLM não retornou nenhum card")
@@ -951,6 +1225,8 @@ def generate_cards(
         logger.info(f"Gerados {len(cards)} cards com sucesso")
         return cards
 
+    except CardGenerationError:
+        raise
     except Exception as e:
         logger.error(f"Erro na geração de cards: {e}")
         raise CardGenerationError(f"Erro ao gerar cards: {e}") from e
@@ -1017,9 +1293,58 @@ def _postprocess_cards(
 <file path="src/legal_anki/models.py">
 """Modelos Anki especializados para Direito Constitucional."""
 
-import genanki
+from typing import Literal
 
-from .config import settings
+import genanki
+from pydantic import BaseModel, Field, field_validator
+
+from .config import CardType, settings
+
+# =============================================================================
+# Modelos Pydantic para Cards
+# =============================================================================
+
+
+class AnkiCard(BaseModel):
+    """Modelo de um card Anki gerado."""
+
+    front: str = Field(
+        min_length=1, description="Texto da frente do card (pergunta ou cloze)"
+    )
+    back: str = Field(min_length=1, description="Texto do verso do card (resposta)")
+    card_type: Literal[
+        "basic", "basic_reversed", "cloze", "questao", "jurisprudencia"
+    ] = Field(description="Tipo do card")
+    tags: list[str] = Field(
+        default_factory=list, description="Lista de tags para o card"
+    )
+    extra: dict | None = Field(
+        default=None,
+        description="Campos adicionais dependendo do tipo (banca, ano, tribunal, fundamento, etc.)",
+    )
+
+    @field_validator("front", "back", mode="before")
+    @classmethod
+    def strip_and_validate(cls, v: str) -> str:
+        """Remove espaços extras e valida que o campo não está vazio."""
+        if not isinstance(v, str):
+            raise ValueError("Campo deve ser uma string")
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Campo não pode ser vazio")
+        return stripped
+
+
+class CardResponse(BaseModel):
+    """Resposta estruturada do LLM com lista de cards."""
+
+    cards: list[AnkiCard] = Field(description="Lista de cards gerados")
+
+
+# =============================================================================
+# Modelos Genanki (templates Anki)
+# =============================================================================
+
 
 # CSS compartilhado para todos os modelos
 CARD_CSS = """
@@ -1216,13 +1541,13 @@ def create_jurisprudencia_model() -> genanki.Model:
     )
 
 
-# Mapeamento de tipo para modelo
+# Mapeamento de tipo para modelo - usa CardType Enum
 _MODEL_FACTORY = {
-    "basic": create_basic_model,
-    "basic_reversed": create_basic_model,  # Usa mesmo modelo, gera 2 notes
-    "cloze": create_cloze_model,
-    "questao": create_questao_model,
-    "jurisprudencia": create_jurisprudencia_model,
+    CardType.BASIC: create_basic_model,
+    CardType.BASIC_REVERSED: create_basic_model,  # Usa mesmo modelo, gera 2 notes
+    CardType.CLOZE: create_cloze_model,
+    CardType.QUESTAO: create_questao_model,
+    CardType.JURISPRUDENCIA: create_jurisprudencia_model,
 }
 
 
@@ -1238,6 +1563,59 @@ def get_field_names_for_card_type(card_type: str) -> list[str]:
     """Retorna os nomes dos campos para um tipo de card."""
     model = get_model_for_card_type(card_type)
     return [f["name"] for f in model.fields]
+</file>
+
+<file path="src/legal_anki/serializers.py">
+"""Serializadores para conversão de cards Anki para diferentes formatos."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .models import AnkiCard
+
+
+def map_card_to_fields(card: "AnkiCard") -> list[str]:
+    """
+    Mapeia um AnkiCard para os campos do modelo Anki correspondente.
+
+    Args:
+        card: Card a ser mapeado
+
+    Returns:
+        Lista de valores de campos na ordem correta para o modelo
+    """
+    extra = card.extra or {}
+
+    if card.card_type == "cloze":
+        return [
+            card.front,  # Text (com marcações cloze)
+            extra.get("fundamento", ""),  # Extra
+        ]
+
+    if card.card_type == "questao":
+        return [
+            card.front,
+            card.back,
+            extra.get("banca", ""),
+            extra.get("ano", ""),
+            extra.get("cargo", ""),
+            extra.get("fundamento", ""),
+        ]
+
+    if card.card_type == "jurisprudencia":
+        return [
+            card.front,
+            card.back,
+            extra.get("tribunal", ""),
+            extra.get("data_julgamento", ""),
+            extra.get("tema", ""),
+            extra.get("fundamento_legal", ""),
+        ]
+
+    # basic e basic_reversed
+    return [card.front, card.back]
 </file>
 
 <file path="src/legal_anki/utils.py">
@@ -1355,8 +1733,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .config import CardType
+
 if TYPE_CHECKING:
-    from .generator import AnkiCard
+    from .models import AnkiCard
 
 
 class CardValidationError(Exception):
@@ -1401,21 +1781,21 @@ def validate_card(
     if not card.tags:
         errors.append("Card sem tags")
 
-    # Validação do tipo de card
-    valid_types = ["basic", "basic_reversed", "cloze", "questao", "jurisprudencia"]
+    # Validação do tipo de card usando Enum
+    valid_types = [t.value for t in CardType]
     if card.card_type not in valid_types:
         errors.append(f"Tipo de card inválido: {card.card_type}")
 
     # Validação específica por tipo
-    if card.card_type == "cloze":
+    if card.card_type == CardType.CLOZE:
         if "{{c1::" not in card.front and "{{c2::" not in card.front:
             errors.append("Card cloze sem marcação de lacuna ({{c1::...}})")
 
-    if card.card_type == "questao":
+    if card.card_type == CardType.QUESTAO:
         if not card.extra or not card.extra.get("banca"):
             errors.append("Questão sem banca definida")
 
-    if card.card_type == "jurisprudencia":
+    if card.card_type == CardType.JURISPRUDENCIA:
         if not card.extra or not card.extra.get("tribunal"):
             errors.append("Jurisprudência sem tribunal definido")
 
@@ -1521,7 +1901,7 @@ sys.path.insert(0, str(src_path))
 @pytest.fixture
 def sample_cards():
     """Retorna cards de exemplo para testes."""
-    from legal_anki.generator import AnkiCard
+    from legal_anki.models import AnkiCard
 
     return [
         AnkiCard(
@@ -1567,7 +1947,7 @@ def sample_cards():
 @pytest.fixture
 def sample_card_basic():
     """Retorna um card básico para testes."""
-    from legal_anki.generator import AnkiCard
+    from legal_anki.models import AnkiCard
 
     return AnkiCard(
         front="Qual é o fundamento constitucional do direito ao silêncio?",
@@ -1580,15 +1960,19 @@ def sample_card_basic():
 
 @pytest.fixture
 def sample_card_invalid():
-    """Retorna um card inválido para testes."""
-    from legal_anki.generator import AnkiCard
+    """Retorna um card inválido para testes de validação de regras de negócio.
+
+    O card é válido do ponto de vista Pydantic (campos preenchidos), mas
+    inválido para os validadores de negócio (front curto, sem fundamento legal).
+    """
+    from legal_anki.models import AnkiCard
 
     return AnkiCard(
-        front="X",  # Muito curto
-        back="",  # Vazio
+        front="X",  # Muito curto para regras de negócio
+        back="Y",  # Muito curto para regras de negócio
         card_type="basic",
         tags=[],  # Sem tags
-        extra=None,
+        extra=None,  # Sem fundamento legal
     )
 </file>
 
@@ -1636,6 +2020,51 @@ class TestExportToCSV:
         result = export_to_csv(sample_cards, output_path=None, include_header=False)
 
         assert "front" not in result.split("\n")[0]
+
+    def test_export_csv_empty_list_raises_error(self):
+        """Exportação com lista vazia deve levantar ExportError."""
+        from legal_anki.exporters import ExportError, export_to_csv
+
+        with pytest.raises(ExportError, match="vazia"):
+            export_to_csv([])
+
+    def test_export_csv_sanitizes_newlines(self):
+        """Newlines no conteúdo são substituídos por espaço."""
+        from legal_anki.exporters import export_to_csv
+        from legal_anki.models import AnkiCard
+
+        card = AnkiCard(
+            front="Pergunta\ncom quebra",
+            back="Resposta\nmulti-linha",
+            card_type="basic",
+            tags=["test"],
+            extra=None,
+        )
+        result = export_to_csv([card], include_header=False)
+
+        # A linha de dados não deve conter \n no conteúdo
+        lines = result.strip().split("\n")
+        assert len(lines) == 1  # Apenas uma linha de dados
+        assert "Pergunta com quebra" in result
+        assert "Resposta multi-linha" in result
+
+    def test_export_csv_handles_legal_characters(self):
+        """Caracteres jurídicos (§, º, ª) são preservados corretamente."""
+        from legal_anki.exporters import export_to_csv
+        from legal_anki.models import AnkiCard
+
+        card = AnkiCard(
+            front="Art. 5º, § 1º da CF/88",
+            back="Os direitos e garantias fundamentais têm aplicação imediata.",
+            card_type="basic",
+            tags=["cf88", "direitos_fundamentais"],
+            extra={"fundamento": "Art. 5º, § 1º, CF/88"},
+        )
+        result = export_to_csv([card])
+
+        assert "§" in result
+        assert "º" in result
+        assert "Art. 5º, § 1º" in result
 
 
 class TestExportToTSV:
@@ -1788,6 +2217,178 @@ class TestMapCardToFields:
 
         assert len(fields) == 6  # Front, Back, Tribunal, Data, Tema, Fundamento
         assert fields[2] == "STF"  # Tribunal
+</file>
+
+<file path="tests/test_llm_client.py">
+"""Testes para o módulo LLM."""
+
+from unittest.mock import MagicMock, patch
+
+from legal_anki.generator import generate_cards
+from legal_anki.models import AnkiCard, CardResponse
+
+
+class MockLLMClient:
+    """Mock de LLMClient para testes."""
+
+    def __init__(self, cards: list[AnkiCard] | None = None):
+        self.cards = cards or [
+            AnkiCard(
+                front="Qual o prazo para propositura de ADI?",
+                back="Não há prazo. A ADI pode ser proposta a qualquer tempo.",
+                card_type="basic",
+                tags=["controle_concentrado", "adi"],
+                extra={"fundamento": "Art. 103 CF/88"},
+            ),
+        ]
+        self.call_count = 0
+        self.last_call = None
+
+    def generate_structured(self, system_prompt, user_message, response_model):
+        """Implementa o protocolo LLMClient."""
+        self.call_count += 1
+        self.last_call = {
+            "system_prompt": system_prompt,
+            "user_message": user_message,
+            "response_model": response_model,
+        }
+        return CardResponse(cards=self.cards)
+
+
+class TestLLMClientProtocol:
+    """Testes para o protocolo LLMClient."""
+
+    def test_mock_client_implements_protocol(self):
+        """Mock client implementa a interface."""
+
+        mock = MockLLMClient()
+
+        # Verifica que tem os métodos necessários
+        assert hasattr(mock, "generate_structured")
+        assert callable(mock.generate_structured)
+
+
+class TestGenerateCardsWithMockClient:
+    """Testes de generate_cards com mock client."""
+
+    def test_generate_cards_with_mock_returns_cards(self):
+        """Geração com mock retorna cards."""
+        mock = MockLLMClient()
+
+        cards = generate_cards(
+            text="Texto de teste sobre ADI",
+            topic="controle_concentrado",
+            llm_client=mock,
+        )
+
+        assert len(cards) == 1
+        assert cards[0].front == "Qual o prazo para propositura de ADI?"
+        assert mock.call_count == 1
+
+    def test_generate_cards_passes_correct_params(self):
+        """Parâmetros corretos são passados ao client."""
+        mock = MockLLMClient()
+
+        generate_cards(
+            text="Texto sobre direitos fundamentais",
+            topic="direitos_fundamentais",
+            difficulty="dificil",
+            include_legal_basis=True,
+            llm_client=mock,
+        )
+
+        assert mock.last_call is not None
+        assert "direitos_fundamentais" in mock.last_call["user_message"]
+        assert mock.last_call["response_model"] == CardResponse
+
+    def test_generate_cards_adds_topic_tag(self):
+        """Topic tag é adicionada aos cards."""
+        mock = MockLLMClient(
+            cards=[
+                AnkiCard(
+                    front="Pergunta?",
+                    back="Resposta com art. 5º CF",
+                    card_type="basic",
+                    tags=["stf"],
+                    extra=None,
+                ),
+            ]
+        )
+
+        cards = generate_cards(
+            text="Texto",
+            topic="direitos_fundamentais",
+            llm_client=mock,
+        )
+
+        assert "direitos_fundamentais" in cards[0].tags
+
+    def test_generate_cards_adds_difficulty_tag(self):
+        """Difficulty tag é adicionada."""
+        mock = MockLLMClient()
+
+        cards = generate_cards(
+            text="Texto",
+            topic="topic",
+            difficulty="dificil",
+            llm_client=mock,
+        )
+
+        assert "dificuldade_dificil" in cards[0].tags
+
+
+class TestOpenAILLMClient:
+    """Testes para OpenAILLMClient."""
+
+    def test_client_initialization(self):
+        """Cliente inicializa corretamente."""
+        from legal_anki.llm.openai_client import OpenAILLMClient
+
+        client = OpenAILLMClient(
+            api_key="test-key",
+            model="gpt-4o-mini",
+            max_retries=5,
+        )
+
+        assert client.model == "gpt-4o-mini"
+        assert client.max_retries == 5
+
+    @patch("legal_anki.llm.openai_client.OpenAI")
+    def test_client_calls_openai_parse(self, mock_openai_class):
+        """Cliente chama OpenAI.beta.chat.completions.parse."""
+        from legal_anki.llm.openai_client import OpenAILLMClient
+
+        # Setup mock
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_message = MagicMock()
+        mock_message.parsed = CardResponse(
+            cards=[
+                AnkiCard(
+                    front="Q?",
+                    back="A com art. 1º",
+                    card_type="basic",
+                    tags=["tag"],
+                    extra=None,
+                )
+            ]
+        )
+        mock_message.refusal = None
+        mock_response.choices = [MagicMock(message=mock_message)]
+        mock_client.beta.chat.completions.parse.return_value = mock_response
+        mock_openai_class.return_value = mock_client
+
+        # Execute
+        client = OpenAILLMClient(api_key="test-key")
+        result = client.generate_structured(
+            system_prompt="System",
+            user_message="User",
+            response_model=CardResponse,
+        )
+
+        # Verify
+        assert len(result.cards) == 1
+        mock_client.beta.chat.completions.parse.assert_called_once()
 </file>
 
 <file path="tests/test_utils.py">
@@ -1973,7 +2574,7 @@ class TestValidateCard:
 
     def test_valid_card_without_legal_basis_requirement(self):
         """Card sem fundamento legal é válido se não exigido."""
-        from legal_anki.generator import AnkiCard
+        from legal_anki.models import AnkiCard
 
         card = AnkiCard(
             front="Qual é a capital do Brasil?",
@@ -1988,7 +2589,7 @@ class TestValidateCard:
 
     def test_invalid_card_missing_legal_basis(self):
         """Card sem fundamento legal falha se exigido."""
-        from legal_anki.generator import AnkiCard
+        from legal_anki.models import AnkiCard
 
         card = AnkiCard(
             front="Qual é a capital do Brasil?",
@@ -2005,7 +2606,7 @@ class TestValidateCard:
 
     def test_valid_card_with_legal_basis_in_back(self):
         """Card com fundamento legal no back é válido."""
-        from legal_anki.generator import AnkiCard
+        from legal_anki.models import AnkiCard
 
         card = AnkiCard(
             front="Qual é o fundamento do habeas corpus?",
@@ -2019,7 +2620,7 @@ class TestValidateCard:
 
     def test_cloze_without_deletion_fails(self):
         """Card cloze sem marcação de lacuna deve falhar."""
-        from legal_anki.generator import AnkiCard
+        from legal_anki.models import AnkiCard
 
         card = AnkiCard(
             front="O STF é composto por 11 ministros.",  # Sem {{c1::}}
@@ -2036,7 +2637,7 @@ class TestValidateCard:
 
     def test_questao_without_banca_fails(self):
         """Card questão sem banca deve falhar."""
-        from legal_anki.generator import AnkiCard
+        from legal_anki.models import AnkiCard
 
         card = AnkiCard(
             front="O direito ao silêncio é absoluto?",
@@ -2102,8 +2703,103 @@ SKILL_VERSION=1.0.0
 </file>
 
 <file path="main.py">
+import argparse
+import logging
+import sys
+from pathlib import Path
+
+from legal_anki.exporters import export_to_csv
+from legal_anki.generator import generate_cards
+
+# Configuração de logging básico para console
+logging.basicConfig(
+    level=logging.INFO, format="%(levelname)s: %(message)s", stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
+
+
 def main():
-    print("Hello from legal-anki!")
+    parser = argparse.ArgumentParser(
+        description="LegalAnki - Gerador de Flashcards Anki para Direito Constitucional",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+
+    # Argumentos
+    parser.add_argument("input", help="Texto de origem ou caminho para um arquivo .txt")
+    parser.add_argument(
+        "--topic",
+        required=True,
+        help="Tópico principal dos cards (ex: controle_constitucional)",
+    )
+    parser.add_argument(
+        "--output",
+        default="legal_anki_cards.csv",
+        help="Caminho do arquivo CSV de saída",
+    )
+    parser.add_argument(
+        "--difficulty",
+        choices=["facil", "medio", "dificil"],
+        default="medio",
+        help="Nível de dificuldade dos cards",
+    )
+    parser.add_argument(
+        "--max-cards",
+        type=int,
+        default=5,
+        help="Número máximo de cards a serem gerados",
+    )
+    parser.add_argument(
+        "--no-legal-basis",
+        action="store_false",
+        dest="include_legal_basis",
+        help="Não obriga a inclusão de fundamento legal nos cards",
+    )
+    parser.set_defaults(include_legal_basis=True)
+
+    args = parser.parse_args()
+
+    if args.max_cards < 1:
+        parser.error("--max-cards deve ser pelo menos 1")
+
+    # 1. Determina o conteúdo de entrada
+    input_path = Path(args.input)
+    if input_path.is_file():
+        try:
+            content = input_path.read_text(encoding="utf-8")
+            logger.info("Lendo conteúdo do arquivo: %s", args.input)
+        except Exception as e:
+            logger.error("Erro ao ler arquivo %s: %s", args.input, e, exc_info=True)
+            sys.exit(1)
+    else:
+        content = args.input
+        logger.info("Processando texto fornecido diretamente via CLI")
+
+    # 2. Gera os cards via LLM
+    logger.info(
+        "Iniciando geração de até %d cards para o tópico: %s",
+        args.max_cards,
+        args.topic,
+    )
+    try:
+        cards = generate_cards(
+            text=content,
+            topic=args.topic,
+            difficulty=args.difficulty,
+            include_legal_basis=args.include_legal_basis,
+            max_cards=args.max_cards,
+        )
+    except Exception:
+        logger.exception("Falha na geração de cards")
+        sys.exit(1)
+
+    # 3. Exporta para CSV
+    try:
+        output_file = export_to_csv(cards, output_path=args.output)
+        logger.info("Sucesso! %d cards exportados para: %s", len(cards), output_file)
+        print(f"\n✅ Cards gerados com sucesso em: {output_file}")
+    except Exception:
+        logger.exception("Erro ao exportar cards")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
@@ -2111,122 +2807,322 @@ if __name__ == "__main__":
 </file>
 
 <file path="PRD.md">
-## 1. Visão geral do produto
+# LegalAnki - Documento de Requisitos de Produto (PRD)
 
-Skill/serviço que recebe conteúdo jurídico (leis, PDFs de aula, questões, jurisprudência) e gera automaticamente flashcards Anki otimizados para **Direito Constitucional para concursos**, com export em TSV, JSON e `.apkg`, além de opção de envio direto via AnkiConnect.[1][2]
+| Campo              | Valor              |
+| ------------------ | ------------------ |
+| Versão             | 1.1.0              |
+| Status             | Em Desenvolvimento |
+| Responsável        | Gabriel Ramos      |
+| Última atualização | 2026-02-08         |
 
-- Público: concurseiros (OAB, magistratura, MP, delegados), estudantes de Direito e professores.[3]
-- Forma de uso: embutido em agentes (Context7/MCP), bots (Discord/Telegram) ou scripts locais, recebendo texto e devolvendo cards prontos para Anki.[2][3]
+## Histórico de Revisões
 
-## 2. Objetivos e sucesso
+| Versão | Data       | Autor         | Descrição                                               |
+| ------ | ---------- | ------------- | ------------------------------------------------------- |
+| 1.0.0  | 2026-02-01 | Equipe        | Versão inicial do PRD                                   |
+| 1.1.0  | 2026-02-08 | Gabriel Ramos | Adição de personas, user stories, roadmap e arquitetura |
 
-**Objetivos principais**:[4][3]
+---
+
+## 1. Visão Geral do Produto
+
+Skill/serviço que recebe conteúdo jurídico (leis, PDFs de aula, questões, jurisprudência) e gera automaticamente flashcards Anki otimizados para **Direito Constitucional para concursos**, com export em TSV, JSON e `.apkg`, além de opção de envio direto via AnkiConnect.
+
+- **Público**: concurseiros (OAB, magistratura, MP, delegados), estudantes de Direito e professores.
+- **Forma de uso**: embutido em agentes (Context7/MCP), bots (Discord/Telegram) ou scripts locais, recebendo texto e devolvendo cards prontos para Anki.
+
+---
+
+## 2. Personas
+
+### Persona 1: Concurseiro Dedicado
+
+| Atributo    | Detalhes                                           |
+| ----------- | -------------------------------------------------- |
+| Nome        | Maria, 28 anos                                     |
+| Perfil      | Advogada preparando-se para Magistratura Estadual  |
+| Dor         | Gasta 4h/dia criando flashcards manualmente        |
+| Objetivo    | Automatizar criação de cards de qualidade jurídica |
+| Dispositivo | MacBook + Anki Desktop                             |
+
+### Persona 2: Professor de Cursinho
+
+| Atributo    | Detalhes                                        |
+| ----------- | ----------------------------------------------- |
+| Nome        | Carlos, 45 anos                                 |
+| Perfil      | Professor de Direito Constitucional em cursinho |
+| Dor         | Preparar material personalizado para cada turma |
+| Objetivo    | Gerar decks temáticos rapidamente para alunos   |
+| Dispositivo | Windows + integração com plataforma do curso    |
+
+### Persona 3: Estudante de Graduação
+
+| Atributo    | Detalhes                                           |
+| ----------- | -------------------------------------------------- |
+| Nome        | João, 22 anos                                      |
+| Perfil      | 5º período de Direito, primeira vez estudando Anki |
+| Dor         | Fixar conteúdo extenso da CF/88 e jurisprudência   |
+| Objetivo    | Cards simples para revisão diária no celular       |
+| Dispositivo | AnkiDroid no smartphone                            |
+
+---
+
+## 3. Objetivos e Sucesso
+
+### Objetivos Principais
 
 - Automatizar a criação de cards Anki de alta qualidade, reduzindo tempo de preparação de material.
 - Garantir cards atomizados, com fundamento legal explícito e, quando aplicável, jurisprudência recente do STF/STJ.
 - Permitir criação em massa (dezenas/centenas) a partir de uma única fonte (aula, lei, caderno de questões).
 
-**Métricas de sucesso**:[5][6]
+### Métricas de Sucesso
 
-- ≥ 80% dos cards gerados aprovados pelo professor sem edição substancial.
-- Tempo médio para gerar e importar um deck de 50 cards ≤ 5 minutos.
-- Aderência: ≥ 90% dos cards de “jurisprudência” contêm tese, tribunal e ano.
+| Métrica                                                  | Meta   |
+| -------------------------------------------------------- | ------ |
+| Cards aprovados pelo professor sem edição substancial    | ≥ 80%  |
+| Tempo médio para gerar e importar deck de 50 cards       | ≤ 5min |
+| Cards de jurisprudência com tese, tribunal e ano         | ≥ 90%  |
+| Taxa de cards válidos (JSON válido, campos obrigatórios) | ≥ 95%  |
 
-## 3. Escopo funcional
+---
 
-**Incluído**:[7][8]
+## 4. Escopo Funcional
+
+### 4.1 Incluído (v1)
 
 - Geração de cards a partir de texto bruto (leis, doutrina resumida, questões de concurso, súmulas, informativos).
-- Tipos de card:
-  - `basic` (pergunta e resposta diretas).
-  - `cloze` (conceitos, definições, artigos).
-  - `jurisprudencia` (tese + tribunal + ano + referência).
-  - `questao_concurso` (enunciado, alternativa correta/comentário, fundamento, banca/ano).
-- Controle de **dificuldade** (`facil`, `medio`, `dificil`, `OAB`, `magistratura`) e **topic** (ex.: “controle de constitucionalidade”).
-- Export:
-  - TSV (front, back, tags).
-  - JSON (estrutura completa para logs/reprocessamento).
-  - `.apkg` base64 via `genanki`.
-- Integração opcional com AnkiConnect (`addNote`) para enviar cards diretamente ao Anki Desktop.[9][10]
+- **Tipos de card**:
+  - `basic` – pergunta e resposta diretas
+  - `cloze` – conceitos, definições, artigos com lacunas
+  - `jurisprudencia` – tese + tribunal + ano + referência
+  - `questao_concurso` – enunciado, alternativa correta/comentário, fundamento, banca/ano
+- Controle de **dificuldade** (`facil`, `medio`, `dificil`, `OAB`, `magistratura`) e **topic** (ex.: "controle de constitucionalidade").
+- **Export**:
+  - TSV (front, back, tags)
+  - JSON (estrutura completa para logs/reprocessamento)
+  - `.apkg` base64 via [genanki](https://github.com/kerrickstaley/genanki)
+- Integração opcional com [AnkiConnect](https://git.sr.ht/~foosoft/anki-connect) (`addNote`) para enviar cards diretamente ao Anki Desktop.
 
-**Fora de escopo (v1)**:[8][7]
+### 4.2 Fora de Escopo (v1)
 
-- Parsing nativo de PDFs/Word (espera-se texto já extraído pelo agente/ferramenta externa).
-- Interface gráfica própria (web/app). Uso previsto via CLI, agente ou bot.
-- Gestão de espaçamento (scheduling) no lado da skill (delegado ao Anki).
+- Parsing nativo de PDFs/Word (espera-se texto já extraído pelo agente/ferramenta externa)
+- Interface gráfica própria (web/app) – uso previsto via CLI, agente ou bot
+- Gestão de espaçamento (scheduling) no lado da skill (delegado ao Anki)
 
-## 4. Requisitos detalhados
+---
 
-### 4.1. Entrada e parâmetros
+## 5. User Stories
 
-- `content: str` – bloco de texto com o material de origem.
-- `card_type: "basic" | "cloze" | "jurisprudencia" | "questao_concurso"`.
-- `topic: str` – tema para tags e nome do deck.
-- `difficulty: "facil" | "medio" | "dificil" | "OAB" | "magistratura"`.
-- `num_cards: int` – quantidade-alvo de cards (p.ex. 5–50).
-- `include_legal_basis: bool` – força inclusão de fundamento legal/jurisprudencial.
+### US-001: Geração de Cards via Agente MCP
 
-Regras de comportamento:
+**Como** concurseiro
+**Quero** gerar flashcards a partir de trechos de lei enviados ao agente
+**Para** economizar tempo de estudo e manter cards padronizados
+
+**Critérios de Aceitação:**
+
+- [ ] Sistema aceita texto de até 10.000 caracteres
+- [ ] Gera mínimo de 5 cards por requisição
+- [ ] Cada card contém fundamento legal quando `include_legal_basis=true`
+- [ ] Export em TSV, JSON e APKG disponível na resposta
+- [ ] Retorno em ≤ 15 segundos para 20 cards
+
+### US-002: Integração AnkiConnect
+
+**Como** usuário avançado com Anki Desktop
+**Quero** enviar cards diretamente ao meu Anki sem exportar arquivos
+**Para** evitar importação manual e manter fluxo contínuo
+
+**Critérios de Aceitação:**
+
+- [ ] Detecta automaticamente se AnkiConnect está ativo (porta 8765)
+- [ ] Cria deck automaticamente se não existir
+- [ ] Mostra confirmação de quantos cards foram adicionados
+- [ ] Erro amigável se Anki não estiver aberto
+
+### US-003: Cards de Jurisprudência
+
+**Como** candidato a magistratura
+**Quero** cards focados em teses jurisprudenciais do STF/STJ
+**Para** memorizar posicionamentos atualizados dos tribunais superiores
+
+**Critérios de Aceitação:**
+
+- [ ] Card contém: tese, tribunal, ano, ementa resumida
+- [ ] Tag automática com tribunal e ano (ex.: `stf::2025`)
+- [ ] Referência completa no campo extra
+- [ ] ≥ 90% de aderência ao formato
+
+### US-004: Geração via Bot Telegram
+
+**Como** estudante que usa Telegram no dia a dia
+**Quero** enviar texto/PDF ao bot e receber `.apkg` pronto
+**Para** criar cards durante trajetos e intervalos
+
+**Critérios de Aceitação:**
+
+- [ ] Comando `/anki <tema> <dificuldade> <num_cards>`
+- [ ] Bot extrai texto se necessário
+- [ ] Retorna arquivo `.apkg` para download direto
+- [ ] Mensagem de erro clara se falhar
+
+---
+
+## 6. Arquitetura do Sistema
+
+```mermaid
+flowchart TD
+    subgraph Entrada
+        A[Texto/PDF Extraído] --> B[Agente MCP]
+        A --> C[Bot Telegram/Discord]
+        A --> D[CLI Local]
+    end
+
+    subgraph Core LegalAnki
+        B --> E[Skill generate_anki_cards]
+        C --> E
+        D --> E
+        E --> F[LLM OpenAI<br/>chat.completions]
+        F --> G[Validador JSON<br/>validators.py]
+        G --> H[Genanki Builder<br/>exporters.py]
+    end
+
+    subgraph Saída
+        H --> I[TSV]
+        H --> J[JSON]
+        H --> K[APKG Base64]
+        E --> L[AnkiConnect<br/>addNote]
+    end
+
+    style E fill:#4CAF50,color:#fff
+    style F fill:#2196F3,color:#fff
+    style L fill:#FF9800,color:#fff
+```
+
+### Componentes Principais
+
+| Componente  | Arquivo           | Responsabilidade                            |
+| ----------- | ----------------- | ------------------------------------------- |
+| Generator   | `generator.py`    | Orquestra fluxo de geração de cards         |
+| LLM Client  | `llm/`            | Comunica com OpenAI API                     |
+| Validators  | `validators.py`   | Valida estrutura JSON e campos obrigatórios |
+| Exporters   | `exporters.py`    | Gera TSV, JSON e APKG via genanki           |
+| AnkiConnect | `anki_connect.py` | Integração com Anki Desktop                 |
+| Models      | `models.py`       | Definição de dataclasses (Card, Deck, etc.) |
+| Config      | `config.py`       | Configurações e variáveis de ambiente       |
+
+---
+
+## 7. Requisitos Detalhados
+
+### 7.1 Entrada e Parâmetros
+
+| Parâmetro             | Tipo                                                           | Descrição                                          |
+| --------------------- | -------------------------------------------------------------- | -------------------------------------------------- |
+| `content`             | `str`                                                          | Bloco de texto com o material de origem            |
+| `card_type`           | `"basic" \| "cloze" \| "jurisprudencia" \| "questao_concurso"` | Tipo de card a gerar                               |
+| `topic`               | `str`                                                          | Tema para tags e nome do deck                      |
+| `difficulty`          | `"facil" \| "medio" \| "dificil" \| "OAB" \| "magistratura"`   | Nível de dificuldade                               |
+| `num_cards`           | `int`                                                          | Quantidade-alvo de cards (5–50)                    |
+| `include_legal_basis` | `bool`                                                         | Força inclusão de fundamento legal/jurisprudencial |
+
+**Regras de comportamento:**
 
 - Se `include_legal_basis=true`, cada card deve conter pelo menos um fundamento legal (artigo, súmula, tese) no campo `back` ou `extra.fundamento`.
 - `topic` e `difficulty` geram tags normalizadas (minúsculas, sem acentos e espaços).
 
-### 4.2. Saída
+### 7.2 Saída
 
-Objeto JSON com:[11][2]
+Objeto JSON com:
 
-- `cards: List[Card]` onde `Card` tem:
-  - `front: str`
-  - `back: str` (pode incluir quebras de linha e emojis utilitários como 📚 / 🏛️)
-  - `tags: List[str]`
-  - `extra: dict` (fundamento, tribunal, banca, ano, dificuldade, etc.).
-- `exports`:
-  - `tsv: str` – colunas: front, back, tags.
-  - `json: str` – JSON completo serializado.
-  - `apkg: str` – pacote Anki em base64.
-- `metadata`:
-  - `total: int`
-  - `deck_name: str` – ex.: `Direito Constitucional - Direitos Fundamentais`.
-  - `tags_used: List[str]`
-  - `skill_version: str`, `llm_model: str`.
+```json
+{
+  "cards": [
+    {
+      "front": "Qual o prazo da ADI?",
+      "back": "Não há prazo. Art. 103, CF/88. 📚",
+      "tags": ["direito-constitucional", "controle-concentrado", "medio"],
+      "extra": {
+        "fundamento": "Art. 103, CF/88",
+        "dificuldade": "medio"
+      }
+    }
+  ],
+  "exports": {
+    "tsv": "front\tback\ttags\n...",
+    "json": "{...}",
+    "apkg": "UEsDBBQAAAAI..."
+  },
+  "metadata": {
+    "total": 20,
+    "deck_name": "Direito Constitucional - Controle de Constitucionalidade",
+    "tags_used": ["direito-constitucional", "controle-concentrado"],
+    "skill_version": "1.1.0",
+    "llm_model": "gpt-4o-mini"
+  }
+}
+```
 
-### 4.3. Templates e modelos Anki
+### 7.3 Templates e Modelos Anki
 
-- Modelo “Questão Concurso Direito”: campos `Enunciado`, `Resposta`, `Fundamento`, `Banca`, com layout HTML/CSS próprio.[12][2]
-- Modelo “Jurisprudência”: `Tese`, `Tribunal`, `Ano`, `Ementa_Resumida`, `Referencia_Completa`.
-- Modelo “Cloze Constitucional”: campo único `Text` com sintaxe `{{c1::...}}`.
+| Modelo                   | Campos                                                    |
+| ------------------------ | --------------------------------------------------------- |
+| Questão Concurso Direito | Enunciado, Resposta, Fundamento, Banca (layout HTML/CSS)  |
+| Jurisprudência           | Tese, Tribunal, Ano, Ementa_Resumida, Referencia_Completa |
+| Cloze Constitucional     | Text (com sintaxe `{{c1::...}}`)                          |
+
 - Mapeamento de `Card.extra` → campos do modelo sempre que o modelo tiver mais que `Front/Back`.
 
-### 4.4. LLM / Prompt
+### 7.4 LLM / Prompt
 
-- Uso de modelo da OpenAI via `chat.completions` com `response_format={"type": "json_object"}` para garantir estrutura séria de JSON.[13][14]
-- `SYSTEM_PROMPT` com:
-  - Regras de atomização (um conceito por card, respostas objetivas).
-  - Ênfase em literalidade da CF/88 e jurisprudência atual STF/STJ.
-  - Exemplos de cards válidos (basic, cloze, jurisprudência, questão).
+- **Geração Estruturada**: Utiliza a funcionalidade de _Structured Outputs_ da OpenAI (`client.beta.chat.completions.parse`) para garantir que os cards sigam rigorosamente o esquema JSON definido em modelos Pydantic (`AnkiCard`), eliminando erros de parsing.
+  - Regras de atomização (um conceito por card, respostas objetivas)
+  - Ênfase em literalidade da CF/88 e jurisprudência atual STF/STJ
+  - Exemplos de cards válidos (basic, cloze, jurisprudência, questão)
 
-## 5. Requisitos não funcionais
+---
 
-- Performance: gerar 20 cards em ≤ 15 segundos em cenário típico (rede estável, modelo remoto).[15][3]
-- Confiabilidade: validação básica pós-LLM (campos obrigatórios, JSON válido, quantidade mínima de cards) e fallback com mensagem de erro amigável.
-- Observabilidade: logs de entradas (anonimizadas quando necessário), parâmetros usados e contagem de tokens/custos.
-- Extensibilidade: fácil inclusão de novos `card_type` e suporte a outras áreas (ex.: Administrativo) reaproveitando a mesma arquitetura.
-- Segurança: nenhuma persistência de conteúdo sensível por padrão; uso de variáveis de ambiente para chaves de API.
+## 8. Requisitos Não Funcionais
 
-## 6. Fluxos principais de uso
+| Categoria           | Requisito                                                                          |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| **Performance**     | Gerar 20 cards em ≤ 15 segundos (rede estável, modelo remoto)                      |
+| **Confiabilidade**  | Validação pós-LLM (campos obrigatórios, JSON válido, quantidade mínima) + fallback |
+| **Observabilidade** | Logs de entradas (anonimizadas), parâmetros usados e contagem de tokens/custos     |
+| **Extensibilidade** | Fácil inclusão de novos `card_type` e suporte a outras áreas do Direito            |
+| **Segurança**       | Nenhuma persistência de conteúdo sensível; chaves de API via variáveis de ambiente |
 
-### Fluxo 1 – Professor/Concurseiro via agente (Context7/MCP)
+---
 
-1. Usuário envia trecho de aula ou lei + parâmetros (tipo, tema, dificuldade, número de cards).
-2. Agente chama a skill MCP `generate_anki_cards`.
-3. Skill chama LLM, valida retorno, gera deck genanki e devolve JSON + `.apkg` base64.
-4. Agente oferece link/download do `.apkg` ou TSV para import no Anki.
+## 9. Fluxos Principais de Uso
+
+### Fluxo 1 – Professor/Concurseiro via Agente (Context7/MCP)
+
+```mermaid
+sequenceDiagram
+    participant U as Usuário
+    participant A as Agente MCP
+    participant S as Skill LegalAnki
+    participant L as OpenAI LLM
+    participant G as Genanki
+
+    U->>A: Envia trecho de lei + parâmetros
+    A->>S: generate_anki_cards()
+    S->>L: chat.completions (JSON mode)
+    L-->>S: JSON com cards
+    S->>S: Valida estrutura
+    S->>G: Gera .apkg
+    G-->>S: APKG base64
+    S-->>A: JSON + exports
+    A-->>U: Link/download do .apkg ou TSV
+```
 
 ### Fluxo 2 – Integração AnkiConnect
 
 1. Usuário executa script local com Anki aberto e AnkiConnect ativado.
 2. Script chama `generate_cards`, obtém `cards`.
-3. Para cada card, envia `addNote` para AnkiConnect com `deckName` e `modelName` apropriados.[10][9]
+3. Para cada card, envia `addNote` para AnkiConnect com `deckName` e `modelName` apropriados.
 4. Cards aparecem imediatamente no deck do Anki, sem precisar de import manual.
 
 ### Fluxo 3 – Bot Discord/Telegram
@@ -2235,39 +3131,123 @@ Objeto JSON com:[11][2]
 2. Bot extrai texto, chama skill, recebe `.apkg`.
 3. Bot envia arquivo `.apkg` pronto para download.
 
-## 7. Restrições, dependências e riscos
+---
 
-- Dependência de:
-  - API da OpenAI (latência, custos, limites de uso).
-  - `genanki` para geração do `.apkg`.[16][12]
-  - AnkiConnect (se fluxo direto for usado).[9]
-- Riscos:
-  - Mudança em modelos LLM afetando estilo/qualidade; mitigação via exemplos no prompt e versionamento.
-  - Alucinações de fundamentos legais/jurisprudenciais; mitigação: checks automáticos simples (ex.: padrão “Art. X, §Y, CF/88”) e revisão humana para decks “high stakes”.
+## 10. Matriz de Priorização (MoSCoW)
 
-Fontes
-[1] Documento de requisitos de produto (PRD) — o que é e ... https://brasil.uxdesign.cc/documento-de-requisitos-de-produto-prd-o-que-%C3%A9-e-como-fazer-um-d86d03c23e8c
-[2] Existe aguma SKILL (para agentes de IA) focada em gera cards para o anki? https://www.perplexity.ai/search/bd2e02cb-899c-4021-a8b6-bffb9e8f1dc4
-[3] Product Requirements Document: PRD Templates and Examples https://www.altexsoft.com/blog/product-requirements-document/
-[4] O que é um Documento de Requisitos de Produto (PRD)? - Banani https://www.banani.co/pt/blog/what-is-prd-product-requirements-document
-[5] The Only PRD Template You Need (with Example) https://productschool.com/blog/product-strategy/product-template-requirements-document-prd
-[6] Free PRD Template & Example for 2026 Software https://www.inflectra.com/Ideas/Topic/PRD-Template.aspx
-[7] Documento de requisitos do produto: template de PRD grátis https://monday.com/blog/pt/desenvolvimento/template-de-prd/
-[8] Modelo de Documento de Requisitos do Produto (PRD) - Miro https://miro.com/pt/modelos/documento-requisitos-produto/
-[9] ~foosoft/anki-connect - Anki plugin to expose a remote API for ... https://git.sr.ht/~foosoft/anki-connect
-[10] AnkiConnect.Actions.Note — anki_connect v0.1.1 - Hexdocs https://hexdocs.pm/anki_connect/AnkiConnect.Actions.Note.html
-[11] Modelos gratuitos de documento de requisitos do produto | Smartsheet https://pt.smartsheet.com/content/free-product-requirements-document-template
-[12] kerrickstaley/genanki: A Python 3 library for generating ... https://github.com/kerrickstaley/genanki
-[13] How do I use the new JSON mode? - API https://community.openai.com/t/how-do-i-use-the-new-json-mode/475890
-[14] OpenAI Chat Completions: JSON 모드 - PKGPL https://pkgpl.org/2023/11/17/openai-chat-completions-json-%EB%AA%A8%EB%93%9C/
-[15] Como escrever um documento de requisitos de produto ... https://visuresolutions.com/pt/alm-guide/product-requirements-document-prd
-[16] genanki/genanki/package.py at e073eba89cb7ce15e64d3d72898d2f92772e2270 · kerrickstaley/genanki https://github.com/kerrickstaley/genanki/blob/e073eba89cb7ce15e64d3d72898d2f92772e2270/genanki/package.py
-[17] seu guia completo para documentos de requisitos de produto https://translate.google.com/translate?u=https%3A%2F%2Fwww.perforce.com%2Fblog%2Falm%2Fhow-write-product-requirements-document-prd&hl=pt&sl=en&tl=pt&client=srp
-[18] Como escrever um Documento de Requisitos do Produto ... https://translate.google.com/translate?u=https%3A%2F%2Fwww.jamasoftware.com%2Frequirements-management-guide%2Fwriting-requirements%2Fhow-to-write-an-effective-product-requirements-document%2F&hl=pt&sl=en&tl=pt&client=srp
-[19] O único modelo PRD que você precisa (com exemplo) https://translate.google.com/translate?u=https%3A%2F%2Fproductschool.com%2Fblog%2Fproduct-strategy%2Fproduct-template-requirements-document-prd&hl=pt&sl=en&tl=pt&client=srp
-[20] Modelo de PRD do ClickUp https://clickup.com/pt-BR/blog/62293/modelos-de-documentos-de-requisitos-de-produtos
-[21] PRD Template: Guide for Product Managers - Userpilot https://userpilot.com/blog/prd-template/
-[22] Como criar um documento de requisitos do produto + modelo https://translate.google.com/translate?u=https%3A%2F%2Fwww.figma.com%2Fresource-library%2Fproduct-requirements-document%2F&hl=pt&sl=en&tl=pt&client=srp
+### Must Have (Essencial para v1)
+
+- [x] Geração de cards `basic` e `cloze`
+- [x] Export JSON e TSV
+- [x] Validação de estrutura JSON
+- [x] Integração OpenAI com JSON mode
+- [ ] Export APKG via genanki
+
+### Should Have (Importante)
+
+- [ ] Tipo `jurisprudencia` completo
+- [ ] Tipo `questao_concurso`
+- [ ] Integração AnkiConnect
+- [ ] Tags normalizadas automáticas
+
+### Could Have (Desejável)
+
+- [ ] Métricas de qualidade dos cards
+- [ ] Templates Anki personalizáveis
+- [ ] Cache de prompts otimizados
+- [ ] Suporte a múltiplos modelos LLM
+
+### Won't Have (v1)
+
+- Interface gráfica própria
+- Parsing de PDF nativo
+- Scheduling de revisões
+- Sincronização com AnkiWeb
+
+---
+
+## 11. Roadmap
+
+### Fase 1: MVP (v1.0) ✅
+
+- [x] Geração de cards básicos e cloze
+- [x] Export TSV e JSON
+- [x] Integração OpenAI
+- [x] Validação de estrutura JSON
+- [x] Modelos de dados (dataclasses)
+
+### Fase 2: Produção (v1.1) 🔄
+
+- [ ] Geração de APKG via genanki
+- [ ] Tipo jurisprudência completo
+- [ ] Tipo questão de concurso
+- [ ] Integração AnkiConnect
+- [ ] Testes automatizados (pytest)
+
+### Fase 3: Expansão (v2.0) 📋
+
+- [ ] Suporte a Direito Administrativo
+- [ ] Suporte a Direito Penal
+- [ ] Templates personalizáveis
+- [ ] Métricas de qualidade dos cards
+- [ ] Dashboard de uso e custos
+
+---
+
+## 12. Restrições, Dependências e Riscos
+
+### Dependências
+
+| Dependência  | Tipo       | Impacto                                 |
+| ------------ | ---------- | --------------------------------------- |
+| OpenAI API   | Externa    | Latência, custos, limites de tokens     |
+| genanki      | Biblioteca | Geração de arquivos APKG                |
+| AnkiConnect  | Plugin     | Integração direta (opcional)            |
+| Python 3.11+ | Runtime    | Compatibilidade de dataclasses e typing |
+
+### Riscos e Mitigações
+
+| Risco                                     | Probabilidade | Impacto | Mitigação                                                |
+| ----------------------------------------- | ------------- | ------- | -------------------------------------------------------- |
+| Mudança em modelos LLM afetando qualidade | Média         | Alto    | Exemplos no prompt + versionamento de prompts            |
+| Alucinações de fundamentos legais         | Alta          | Médio   | Checks automáticos (regex "Art. X, CF") + revisão humana |
+| Rate limits da OpenAI                     | Baixa         | Médio   | Retry com backoff exponencial                            |
+| AnkiConnect indisponível                  | Baixa         | Baixo   | Fallback para export APKG                                |
+
+---
+
+## 13. Glossário
+
+| Termo              | Definição                                                                |
+| ------------------ | ------------------------------------------------------------------------ |
+| **Card**           | Unidade de flashcard com frente (pergunta) e verso (resposta)            |
+| **Cloze**          | Tipo de card com lacunas para preenchimento (ex: `{{c1::texto}}`)        |
+| **Deck**           | Conjunto de cards agrupados por tema                                     |
+| **APKG**           | Formato de pacote Anki para importação/exportação de decks               |
+| **AnkiConnect**    | Plugin que expõe API REST para controle do Anki Desktop                  |
+| **Genanki**        | Biblioteca Python para geração programática de arquivos APKG             |
+| **MCP**            | Model Context Protocol – padrão para integração de skills com agentes IA |
+| **Atomização**     | Princípio de criar cards com um único conceito por unidade               |
+| **Jurisprudência** | Entendimento dos tribunais sobre determinada matéria                     |
+| **Súmula**         | Enunciado que resume jurisprudência dominante de um tribunal             |
+
+---
+
+## 14. Referências
+
+### Documentação Técnica
+
+- [genanki - GitHub](https://github.com/kerrickstaley/genanki) – Biblioteca para geração de APKG
+- [AnkiConnect - SourceHut](https://git.sr.ht/~foosoft/anki-connect) – Plugin de API REST para Anki
+- [OpenAI Chat Completions - JSON Mode](https://community.openai.com/t/how-do-i-use-the-new-json-mode/475890) – Documentação do modo JSON
+
+### Metodologia PRD
+
+- [PRD Templates and Examples - AltexSoft](https://www.altexsoft.com/blog/product-requirements-document/)
+- [Product Requirements Document - Product School](https://productschool.com/blog/product-strategy/product-template-requirements-document-prd)
+- [Documento de Requisitos de Produto - Banani](https://www.banani.co/pt/blog/what-is-prd-product-requirements-document)
+- [PRD Template - Inflectra](https://www.inflectra.com/Ideas/Topic/PRD-Template.aspx)
+- [Template de PRD - Monday.com](https://monday.com/blog/pt/desenvolvimento/template-de-prd/)
 </file>
 
 <file path="pyproject.toml">
@@ -2284,6 +3264,7 @@ dependencies = [
     "pydantic-settings>=2.12.0",
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",
+    "tenacity>=9.1.4",
 ]
 
 [dependency-groups]
@@ -2295,7 +3276,378 @@ dev = [
 </file>
 
 <file path="README.md">
+# LegalAnki 📚⚖️
 
+<div align="center">
+
+**Gerador inteligente de flashcards Anki para Direito Constitucional usando LLM**
+
+[![Python](https://img.shields.io/badge/Python-3.13+-blue.svg)](https://www.python.org/downloads/)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+</div>
+
+## Visão Geral
+
+LegalAnki é uma skill/biblioteca Python que transforma conteúdo jurídico (leis, PDFs de aula, questões, jurisprudência) em flashcards Anki otimizados para **Direito Constitucional em concursos**.
+
+### Principais Recursos
+
+- 🤖 **Geração via LLM** – OpenAI GPT-4o com Structured Outputs
+- 📝 **Múltiplos tipos de card** – Basic, Cloze, Questão de Concurso, Jurisprudência
+- 📦 **Exports flexíveis** – CSV, TSV, JSON, APKG (`.apkg`)
+- 🔗 **Integração AnkiConnect** – Envio direto para o Anki Desktop
+- ⚡ **Validação automática** – Estrutura JSON e campos obrigatórios
+
+---
+
+## Quick Start
+
+### 1. Instalação
+
+```bash
+# Clone o repositório
+git clone https://github.com/seu-usuario/LegalAnki.git
+cd LegalAnki
+
+# Instale as dependências com uv
+uv sync
+
+# Ou com pip
+pip install -e .
+```
+
+### 2. Configuração
+
+Copie o arquivo de exemplo e configure sua API key:
+
+```bash
+cp .env.example .env
+```
+
+Edite `.env` com sua chave OpenAI:
+
+```env
+OPENAI_API_KEY=sk-...
+```
+
+### 3. Uso Básico
+
+```python
+from legal_anki.generator import generate_cards
+from legal_anki.exporters import export_to_apkg
+
+# Gerar cards a partir de texto
+cards = generate_cards(
+    text="Art. 5º, CF/88: Todos são iguais perante a lei...",
+    topic="direitos_fundamentais",
+    difficulty="medio",
+    max_cards=5
+)
+
+# Exportar para APKG
+export_to_apkg(cards, deck_name="Direito Constitucional", output_path="deck.apkg")
+```
+
+### 4. Via CLI
+
+```bash
+uv run python main.py
+```
+
+---
+
+## Variáveis de Ambiente
+
+| Variável                       | Obrigatória | Descrição                   | Exemplo                 |
+| ------------------------------ | ----------- | --------------------------- | ----------------------- |
+| `OPENAI_API_KEY`               | ✅          | Chave da API OpenAI         | `sk-...`                |
+| `OPENAI_MODEL`                 | ❌          | Modelo a usar               | `gpt-4o-2024-08-06`     |
+| `ANKI_DECK_ID`                 | ❌          | ID único do deck            | `1234567890`            |
+| `ANKI_MODEL_BASIC_ID`          | ❌          | ID do modelo Basic          | `1234567891`            |
+| `ANKI_MODEL_CLOZE_ID`          | ❌          | ID do modelo Cloze          | `1234567892`            |
+| `ANKI_MODEL_QUESTAO_ID`        | ❌          | ID do modelo Questão        | `1234567893`            |
+| `ANKI_MODEL_JURISPRUDENCIA_ID` | ❌          | ID do modelo Jurisprudência | `1234567894`            |
+| `ANKI_CONNECT_URL`             | ❌          | URL do AnkiConnect          | `http://localhost:8765` |
+
+> **Nota**: Os IDs Anki evitam conflitos entre perfis. Gere novos IDs com:
+>
+> ```bash
+> python -c "import random; print(random.randrange(1 << 30, 1 << 31))"
+> ```
+
+---
+
+## 📖 Exemplos de Uso
+
+### Exemplo 1: Cards a partir de Artigo da CF/88
+
+```python
+from legal_anki.generator import generate_cards
+from legal_anki.exporters import export_to_apkg
+
+artigo = """
+Art. 5º, LXIII - a plenitude da defesa;
+Art. 5º, LXIV - o direito de informar, aos seus familiares e às
+pessoas que lhe são próximas, sobre sua prisão ou detenção;
+Art. 5º, LXV - a prisão de qualquer pessoa e o local onde se
+encontre serão comunicados imediatamente ao juiz competente
+e à família do preso ou à pessoa por ele indicada.
+"""
+
+cards = generate_cards(
+    text=artigo,
+    topic="garantias_processuais",
+    difficulty="medio",
+    card_type="cloze",
+    max_cards=10
+)
+
+export_to_apkg(cards, "Garantias Processuais.apkg")
+```
+
+### Exemplo 2: Cards de Jurisprudência
+
+```python
+from legal_anki.generator import generate_cards
+from legal_anki.exporters import export_to_csv
+
+sumula = """
+Súmula Vinculante 11 - STF: Só é lícito o uso de algemas em casos
+de resistência e de fundado receio de fuga ou de perigo à
+integridade física própria ou alheia, por parte do preso ou de
+terceiros, devendo justificar a excepcionalidade por escrito.
+"""
+
+cards = generate_cards(
+    text=sumula,
+    topic="sumulas_vinculantes",
+    difficulty="dificil",
+    card_type="jurisprudencia"
+)
+
+# Exporta para CSV com cabeçalho
+export_to_csv(cards, "sumulas.csv", include_header=True)
+```
+
+### Exemplo 3: Múltiplos Formatos
+
+```python
+from legal_anki.generator import generate_cards
+from legal_anki.exporters import export_cards
+
+cards = generate_cards(
+    text="Art. 5º da CF/88...",
+    topic="direitos_fundamentais"
+)
+
+# Exporta para todos os formatos
+for fmt in ["csv", "json", "apkg"]:
+    export_cards(
+        cards=cards,
+        output_path=f"direitos_fundamentais.{fmt}",
+        format=fmt,
+        deck_name="Direito Constitucional"  # apenas para APKG
+    )
+```
+
+### Exemplo 4: Integração com AnkiConnect
+
+```python
+from legal_anki.anki_connect import AnkiConnectClient
+from legal_anki.generator import generate_cards
+
+client = AnkiConnectClient()
+
+# Verifica se Anki está rodando
+if client.is_available():
+    cards = generate_cards(text=texto, topic="teste")
+
+    # Adiciona cards ao deck
+    for card in cards:
+        note_id = client.add_card(
+            card=card,
+            deck_name="LegalAnki::Teste"
+        )
+        print(f"Card adicionado: {note_id}")
+
+    # Sincroniza com AnkiWeb
+    client.sync()
+else:
+    print("Abra o Anki com AnkiConnect instalado")
+```
+
+---
+
+## Arquitetura
+
+```mermaid
+flowchart LR
+    subgraph Entrada
+        A[Texto/PDF] --> B[Agente MCP]
+        A --> C[Bot Telegram]
+        A --> D[CLI]
+    end
+
+    subgraph Core
+        B --> E[generator.py]
+        C --> E
+        D --> E
+        E --> F[OpenAI LLM]
+        F --> G[validators.py]
+        G --> H[exporters.py]
+    end
+
+    subgraph Saída
+        H --> I[CSV/TSV]
+        H --> J[JSON]
+        H --> K[APKG]
+        E --> L[AnkiConnect]
+    end
+```
+
+---
+
+## Estrutura do Projeto
+
+```text
+LegalAnki/
+├── src/legal_anki/
+│   ├── generator.py      # Orquestra geração de cards
+│   ├── models.py         # Modelos Anki (genanki)
+│   ├── exporters.py      # CSV, TSV, JSON, APKG
+│   ├── validators.py     # Validação de estrutura
+│   ├── config.py         # Configurações
+│   ├── anki_connect.py   # Integração AnkiConnect
+│   ├── llm/              # Cliente OpenAI
+│   └── prompts/          # System prompts
+├── tests/                # Testes pytest
+├── main.py               # Entry point CLI
+└── PRD.md                # Documento de requisitos
+```
+
+---
+
+## Tipos de Card
+
+| Tipo             | Descrição                 | Campos                                                       |
+| ---------------- | ------------------------- | ------------------------------------------------------------ |
+| `basic`          | Pergunta/Resposta simples | Front, Back                                                  |
+| `cloze`          | Lacunas para preencher    | Text, Extra                                                  |
+| `questao`        | Questão de concurso       | Front, Back, Banca, Ano, Cargo, Fundamento                   |
+| `jurisprudencia` | Súmulas e julgados        | Front, Back, Tribunal, DataJulgamento, Tema, FundamentoLegal |
+
+---
+
+## Formatos de Export
+
+### CSV (Default)
+
+Separador `;` para compatibilidade com Excel BR.
+
+```csv
+front;back;tags
+"Qual o prazo da ADI?";"Não há prazo. Art. 103, CF/88";"controle-concentrado,medio"
+```
+
+### TSV
+
+Compatível com importação direta no Anki.
+
+### JSON
+
+Estrutura completa com metadata para logs e reprocessamento.
+
+### APKG
+
+Pacote Anki pronto para importação via `genanki`.
+
+---
+
+## 🧪 Desenvolvimento
+
+### Executando Testes
+
+```bash
+# Instale dependências de desenvolvimento
+pip install -e ".[dev]"
+
+# Execute os testes
+pytest tests/ -v
+
+# Com cobertura
+pytest tests/ --cov=src/legal_anki --cov-report=html
+
+# Teste específico
+pytest tests/test_utils.py -v
+```
+
+### Formatação e Lint
+
+```bash
+# Black (formatação)
+black src/ tests/
+
+# isort (ordenação de imports)
+isort src/ tests/
+
+# ruff (lint rápido)
+ruff check src/ tests/
+
+# mypy (type checking)
+mypy src/legal_anki/
+```
+
+### Estrutura de Testes
+
+```text
+tests/
+├── conftest.py           # Fixtures compartilhadas
+├── test_exporters.py     # Testes de exportação
+├── test_llm_client.py    # Testes do cliente LLM
+├── test_utils.py         # Testes de utilitários
+└── test_validators.py    # Testes de validação
+```
+
+---
+
+## 🤝 Contribuindo
+
+Contribuições são bem-vindas! Por favor:
+
+1. **Fork** o projeto
+2. Crie uma **branch** para sua feature (`git checkout -b feature/nova-feature`)
+3. **Commit** suas mudanças (`git commit -m 'Adiciona nova feature'`)
+4. **Push** para a branch (`git push origin feature/nova-feature`)
+5. Abra um **Pull Request**
+
+### Diretrizes
+
+- Siga PEP 8 para estilo de código
+- Adicione testes para novas funcionalidades
+- Atualize a documentação quando necessário
+- Use docstrings Google style
+
+---
+
+## 📄 Licença
+
+MIT License - veja [LICENSE](LICENSE) para detalhes.
+
+---
+
+## 🙋 Suporte
+
+- 📧 Abra uma [issue](https://github.com/seu-usuario/LegalAnki/issues) para bugs ou sugestões
+- 📖 Consulte o [PRD.md](PRD.md) para documentação detalhada dos requisitos
+- 💬 Para discussões sobre Direito Constitucional, consulte materiais especializados
+
+---
+
+## 🎯 Sobre o Projeto
+
+Desenvolvido com ❤️ para concurseiros de Direito Constitucional
 </file>
 
 </files>

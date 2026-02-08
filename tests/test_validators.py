@@ -2,6 +2,7 @@
 
 import pytest
 
+from legal_anki.models import AnkiCard
 from legal_anki.validators import (
     CardValidationError,
     validate_card,
@@ -39,7 +40,6 @@ class TestValidateCard:
 
     def test_valid_card_without_legal_basis_requirement(self):
         """Card sem fundamento legal é válido se não exigido."""
-        from legal_anki.generator import AnkiCard
 
         card = AnkiCard(
             front="Qual é a capital do Brasil?",
@@ -54,7 +54,6 @@ class TestValidateCard:
 
     def test_invalid_card_missing_legal_basis(self):
         """Card sem fundamento legal falha se exigido."""
-        from legal_anki.generator import AnkiCard
 
         card = AnkiCard(
             front="Qual é a capital do Brasil?",
@@ -71,7 +70,6 @@ class TestValidateCard:
 
     def test_valid_card_with_legal_basis_in_back(self):
         """Card com fundamento legal no back é válido."""
-        from legal_anki.generator import AnkiCard
 
         card = AnkiCard(
             front="Qual é o fundamento do habeas corpus?",
@@ -85,7 +83,6 @@ class TestValidateCard:
 
     def test_cloze_without_deletion_fails(self):
         """Card cloze sem marcação de lacuna deve falhar."""
-        from legal_anki.generator import AnkiCard
 
         card = AnkiCard(
             front="O STF é composto por 11 ministros.",  # Sem {{c1::}}
@@ -102,7 +99,6 @@ class TestValidateCard:
 
     def test_questao_without_banca_fails(self):
         """Card questão sem banca deve falhar."""
-        from legal_anki.generator import AnkiCard
 
         card = AnkiCard(
             front="O direito ao silêncio é absoluto?",

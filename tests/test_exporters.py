@@ -42,6 +42,51 @@ class TestExportToCSV:
 
         assert "front" not in result.split("\n")[0]
 
+    def test_export_csv_empty_list_raises_error(self):
+        """Exportação com lista vazia deve levantar ExportError."""
+        from legal_anki.exporters import ExportError, export_to_csv
+
+        with pytest.raises(ExportError, match="vazia"):
+            export_to_csv([])
+
+    def test_export_csv_sanitizes_newlines(self):
+        """Newlines no conteúdo são substituídos por espaço."""
+        from legal_anki.exporters import export_to_csv
+        from legal_anki.models import AnkiCard
+
+        card = AnkiCard(
+            front="Pergunta\ncom quebra",
+            back="Resposta\nmulti-linha",
+            card_type="basic",
+            tags=["test"],
+            extra=None,
+        )
+        result = export_to_csv([card], include_header=False)
+
+        # A linha de dados não deve conter \n no conteúdo
+        lines = result.strip().split("\n")
+        assert len(lines) == 1  # Apenas uma linha de dados
+        assert "Pergunta com quebra" in result
+        assert "Resposta multi-linha" in result
+
+    def test_export_csv_handles_legal_characters(self):
+        """Caracteres jurídicos (§, º, ª) são preservados corretamente."""
+        from legal_anki.exporters import export_to_csv
+        from legal_anki.models import AnkiCard
+
+        card = AnkiCard(
+            front="Art. 5º, § 1º da CF/88",
+            back="Os direitos e garantias fundamentais têm aplicação imediata.",
+            card_type="basic",
+            tags=["cf88", "direitos_fundamentais"],
+            extra={"fundamento": "Art. 5º, § 1º, CF/88"},
+        )
+        result = export_to_csv([card])
+
+        assert "§" in result
+        assert "º" in result
+        assert "Art. 5º, § 1º" in result
+
 
 class TestExportToTSV:
     """Testes para exportação TSV."""

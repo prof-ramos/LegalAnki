@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from .config import CardType
 
 if TYPE_CHECKING:
-    from .generator import AnkiCard
+    from .models import AnkiCard
 
 
 class CardValidationError(Exception):

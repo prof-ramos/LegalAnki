@@ -5,14 +5,14 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-import requests
+import httpx
 
 from .config import settings
 from .models import get_model_for_card_type
 from .serializers import map_card_to_fields
 
 if TYPE_CHECKING:
-    from .generator import AnkiCard
+    from .models import AnkiCard
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +56,9 @@ class AnkiConnectClient:
         }
 
         try:
-            response = requests.post(self.url, json=payload, timeout=30)
+            response = httpx.post(self.url, json=payload, timeout=30)
             response.raise_for_status()
-        except requests.RequestException as e:
+        except httpx.RequestError as e:
             raise AnkiConnectError(
                 f"Erro de conexão com AnkiConnect em {self.url}: {e}"
             ) from e

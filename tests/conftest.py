@@ -13,7 +13,7 @@ sys.path.insert(0, str(src_path))
 @pytest.fixture
 def sample_cards():
     """Retorna cards de exemplo para testes."""
-    from legal_anki.generator import AnkiCard
+    from legal_anki.models import AnkiCard
 
     return [
         AnkiCard(
@@ -59,7 +59,7 @@ def sample_cards():
 @pytest.fixture
 def sample_card_basic():
     """Retorna um card básico para testes."""
-    from legal_anki.generator import AnkiCard
+    from legal_anki.models import AnkiCard
 
     return AnkiCard(
         front="Qual é o fundamento constitucional do direito ao silêncio?",
@@ -72,13 +72,17 @@ def sample_card_basic():
 
 @pytest.fixture
 def sample_card_invalid():
-    """Retorna um card inválido para testes."""
-    from legal_anki.generator import AnkiCard
+    """Retorna um card inválido para testes de validação de regras de negócio.
+
+    O card é válido do ponto de vista Pydantic (campos preenchidos), mas
+    inválido para os validadores de negócio (front curto, sem fundamento legal).
+    """
+    from legal_anki.models import AnkiCard
 
     return AnkiCard(
-        front="X",  # Muito curto
-        back="",  # Vazio
+        front="X",  # Muito curto para regras de negócio
+        back="Y",  # Muito curto para regras de negócio
         card_type="basic",
         tags=[],  # Sem tags
-        extra=None,
+        extra=None,  # Sem fundamento legal
     )

@@ -1,8 +1,53 @@
 """Modelos Anki especializados para Direito Constitucional."""
 
 import genanki
+from pydantic import BaseModel, Field, field_validator
 
 from .config import CardType, settings
+
+# =============================================================================
+# Modelos Pydantic para Cards
+# =============================================================================
+
+
+class AnkiCard(BaseModel):
+    """Modelo de um card Anki gerado."""
+
+    front: str = Field(
+        min_length=1, description="Texto da frente do card (pergunta ou cloze)"
+    )
+    back: str = Field(min_length=1, description="Texto do verso do card (resposta)")
+    card_type: CardType = Field(description="Tipo do card")
+    tags: list[str] = Field(
+        default_factory=list, description="Lista de tags para o card"
+    )
+    extra: dict | None = Field(
+        default=None,
+        description="Campos adicionais dependendo do tipo (banca, ano, tribunal, fundamento, etc.)",
+    )
+
+    @field_validator("front", "back", mode="before")
+    @classmethod
+    def strip_and_validate(cls, v: str) -> str:
+        """Remove espaços extras e valida que o campo não está vazio."""
+        if not isinstance(v, str):
+            raise ValueError("Campo deve ser uma string")
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("Campo não pode ser vazio")
+        return stripped
+
+
+class CardResponse(BaseModel):
+    """Resposta estruturada do LLM com lista de cards."""
+
+    cards: list[AnkiCard] = Field(description="Lista de cards gerados")
+
+
+# =============================================================================
+# Modelos Genanki (templates Anki)
+# =============================================================================
+
 
 # CSS compartilhado para todos os modelos
 CARD_CSS = """

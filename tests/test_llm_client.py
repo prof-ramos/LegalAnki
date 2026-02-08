@@ -2,7 +2,8 @@
 
 from unittest.mock import MagicMock, patch
 
-from legal_anki.generator import AnkiCard, CardResponse, generate_cards
+from legal_anki.generator import generate_cards
+from legal_anki.models import AnkiCard, CardResponse
 
 
 class MockLLMClient:

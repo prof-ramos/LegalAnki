@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Literal
-
-from pydantic import BaseModel, Field
+from typing import TYPE_CHECKING
 
 from .config import settings
+from .models import AnkiCard, CardResponse
 from .prompts.system import build_system_prompt
 from .utils import normalize_tags
 
@@ -15,27 +14,6 @@ if TYPE_CHECKING:
     from .llm.protocol import LLMClient
 
 logger = logging.getLogger(__name__)
-
-
-class AnkiCard(BaseModel):
-    """Modelo de um card Anki gerado."""
-
-    front: str = Field(description="Texto da frente do card (pergunta ou cloze)")
-    back: str = Field(description="Texto do verso do card (resposta)")
-    card_type: Literal[
-        "basic", "basic_reversed", "cloze", "questao", "jurisprudencia"
-    ] = Field(description="Tipo do card")
-    tags: list[str] = Field(description="Lista de tags para o card")
-    extra: dict | None = Field(
-        default=None,
-        description="Campos adicionais dependendo do tipo (banca, ano, tribunal, fundamento, etc.)",
-    )
-
-
-class CardResponse(BaseModel):
-    """Resposta estruturada do LLM com lista de cards."""
-
-    cards: list[AnkiCard] = Field(description="Lista de cards gerados")
 
 
 class CardGenerationError(Exception):
@@ -62,15 +40,27 @@ def generate_cards(
         difficulty: Nível de dificuldade ("facil", "medio", "dificil")
         include_legal_basis: Se True, instrui o LLM a sempre incluir fundamento legal
         card_type: Tipo de card a gerar ("auto" para deixar o LLM decidir)
-        max_cards: Número máximo de cards a gerar
+        max_cards: Número máximo de cards a gerar (1-100)
         llm_client: Cliente LLM opcional. Se None, usa OpenAI padrão com retry.
 
     Returns:
         Lista de AnkiCard gerados
 
     Raises:
+        ValueError: Se os parâmetros de entrada forem inválidos
         CardGenerationError: Se houver erro na geração
     """
+    # Validação de inputs
+    if not text or not text.strip():
+        raise ValueError("Parâmetro 'text' não pode ser vazio")
+    if not topic or not topic.strip():
+        raise ValueError("Parâmetro 'topic' não pode ser vazio")
+    if max_cards < 1 or max_cards > 100:
+        raise ValueError("Parâmetro 'max_cards' deve estar entre 1 e 100")
+
+    text = text.strip()
+    topic = topic.strip()
+
     if llm_client is None:
         if not settings.openai_api_key:
             raise CardGenerationError(

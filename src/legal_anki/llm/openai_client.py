@@ -8,7 +8,7 @@ from typing import TypeVar
 from openai import APIConnectionError, APIError, OpenAI, RateLimitError
 from pydantic import BaseModel
 from tenacity import (
-    retry,
+    Retrying,
     retry_if_exception_type,
     stop_after_attempt,
     wait_exponential_jitter,
@@ -67,24 +67,32 @@ class OpenAILLMClient:
             ValueError: Se o LLM não retornar resposta válida
             APIError: Se todas as tentativas falharem
         """
-        return self._generate_with_retry(system_prompt, user_message, response_model)
+        retryer = Retrying(
+            stop=stop_after_attempt(self.max_retries),
+            wait=wait_exponential_jitter(initial=1, max=30, jitter=2),
+            retry=retry_if_exception_type(
+                (APIError, RateLimitError, APIConnectionError)
+            ),
+            before_sleep=lambda rs: logger.warning(
+                "Retry %d/%d após erro: %s",
+                rs.attempt_number,
+                self.max_retries,
+                rs.outcome.exception(),
+            ),
+            reraise=True,
+        )
+        return retryer(
+            self._call_openai_api, system_prompt, user_message, response_model
+        )
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential_jitter(initial=1, max=30, jitter=2),
-        retry=retry_if_exception_type((APIError, RateLimitError, APIConnectionError)),
-        before_sleep=lambda retry_state: logger.warning(
-            f"Retry {retry_state.attempt_number}/3 após erro: {retry_state.outcome.exception()}"
-        ),
-    )
-    def _generate_with_retry(
+    def _call_openai_api(
         self,
         system_prompt: str,
         user_message: str,
         response_model: type[T],
     ) -> T:
-        """Método interno com decorator de retry."""
-        logger.debug(f"Chamando OpenAI API com modelo {self.model}")
+        """Chamada direta à API da OpenAI."""
+        logger.debug("Chamando OpenAI API com modelo %s", self.model)
 
         response = self.client.beta.chat.completions.parse(
             model=self.model,

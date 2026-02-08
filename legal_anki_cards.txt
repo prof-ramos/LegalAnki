@@ -1,0 +1,4 @@
+Qual é o fundamento constitucional do direito ao silêncio?	Art. 5º, LXIII, CF/88 - O preso tem direito de permanecer calado.	direitos_fundamentais garantias_processuais
+A Súmula Vinculante {{c1::11}} trata do uso de {{c2::algemas}}.	SV 11 - Uso de algemas	sumulas_vinculantes stf
+(CESPE/2023) O direito ao silêncio é absoluto e não admite exceções.	ERRADO. O direito ao silêncio não é absoluto. Existem situações em que o acusado deve se identificar.	direitos_fundamentais cespe
+Qual o entendimento do STF sobre uso de algemas?	Só é lícito o uso de algemas em casos de resistência, fundado receio de fuga ou perigo.	stf sumulas_vinculantes
