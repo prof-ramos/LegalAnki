@@ -1,6 +1,5 @@
 """Utilitários para normalização e funções auxiliares."""
 
-import random
 import re
 import unicodedata
 
@@ -10,6 +9,7 @@ def slugify_tag(tag: str) -> str:
     Normaliza tag para formato Anki-friendly.
 
     Remove acentos, substitui espaços por underscores e remove caracteres especiais.
+    Preserva o separador hierárquico ``::`` do Anki.
 
     Args:
         tag: Tag original a ser normalizada
@@ -20,17 +20,28 @@ def slugify_tag(tag: str) -> str:
     if not tag:
         return ""
 
+    # Preserva separador hierárquico :: tratando cada segmento isoladamente
+    parts = tag.split("::")
+    slugified = [_slugify_segment(p) for p in parts]
+    return "::".join(p for p in slugified if p)
+
+
+def _slugify_segment(segment: str) -> str:
+    """Normaliza um segmento individual de tag (sem ::)."""
+    if not segment:
+        return ""
+
     # Remove acentos
-    tag = unicodedata.normalize("NFKD", tag)
-    tag = tag.encode("ascii", "ignore").decode("ascii")
+    segment = unicodedata.normalize("NFKD", segment)
+    segment = segment.encode("ascii", "ignore").decode("ascii")
 
     # Substitui espaços por underscores
-    tag = re.sub(r"\s+", "_", tag.strip())
+    segment = re.sub(r"\s+", "_", segment.strip())
 
     # Remove caracteres especiais (mantém letras, números, underscore e hífen)
-    tag = re.sub(r"[^\w\-]", "", tag)
+    segment = re.sub(r"[^\w\-]", "", segment)
 
-    return tag.lower()
+    return segment.lower()
 
 
 def normalize_tags(tags: list[str]) -> list[str]:
@@ -52,16 +63,6 @@ def normalize_tags(tags: list[str]) -> list[str]:
             seen.add(tag)
             unique.append(tag)
     return unique
-
-
-def generate_unique_id() -> int:
-    """
-    Gera ID único válido para modelos/decks Anki.
-
-    Returns:
-        Inteiro no range válido para IDs Anki
-    """
-    return random.randrange(1 << 30, 1 << 31)
 
 
 def escape_html(text: str) -> str:

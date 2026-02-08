@@ -112,7 +112,7 @@ class TestGenerateCardsWithMockClient:
             llm_client=mock,
         )
 
-        assert "dificuldade_dificil" in cards[0].tags
+        assert "dificuldade::dificil" in cards[0].tags
 
 
 class TestOpenAILLMClient:

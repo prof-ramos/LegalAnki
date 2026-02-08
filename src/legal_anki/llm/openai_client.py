@@ -32,6 +32,7 @@ class OpenAILLMClient:
         api_key: str,
         model: str = "gpt-4o-2024-08-06",
         max_retries: int = 3,
+        temperature: float = 0.7,
     ):
         """
         Inicializa o cliente OpenAI.
@@ -40,11 +41,14 @@ class OpenAILLMClient:
             api_key: Chave da API OpenAI
             model: Modelo a usar (deve suportar structured outputs)
             max_retries: Número máximo de tentativas em caso de erro
+            temperature: Temperatura para geração (0.0-2.0). Valores menores
+                         produzem saídas mais determinísticas.
         """
         # Desabilita retry interno do SDK, Tenacity controla
         self.client = OpenAI(api_key=api_key, max_retries=0)
         self.model = model
         self.max_retries = max_retries
+        self.temperature = temperature
 
     def generate_structured(
         self,
@@ -101,6 +105,7 @@ class OpenAILLMClient:
                 {"role": "user", "content": user_message},
             ],
             response_format=response_model,
+            temperature=self.temperature,
         )
 
         result = response.choices[0].message.parsed

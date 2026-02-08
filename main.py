@@ -5,6 +5,7 @@ from pathlib import Path
 
 from legal_anki.exporters import export_to_csv
 from legal_anki.generator import generate_cards
+from legal_anki.parsers import SUPPORTED_EXTENSIONS, ParseError, parse_file
 
 # Configuração de logging básico para console
 logging.basicConfig(
@@ -20,7 +21,11 @@ def main():
     )
 
     # Argumentos
-    parser.add_argument("input", help="Texto de origem ou caminho para um arquivo .txt")
+    supported = ", ".join(f".{e}" for e in sorted(SUPPORTED_EXTENSIONS))
+    parser.add_argument(
+        "input",
+        help=f"Texto de origem ou caminho para arquivo ({supported})",
+    )
     parser.add_argument(
         "--topic",
         required=True,
@@ -61,8 +66,11 @@ def main():
     input_path = Path(args.input)
     if input_path.is_file():
         try:
-            content = input_path.read_text(encoding="utf-8")
+            content = parse_file(input_path)
             logger.info("Lendo conteúdo do arquivo: %s", args.input)
+        except ParseError as e:
+            logger.error("Erro ao processar arquivo: %s", e)
+            sys.exit(1)
         except Exception as e:
             logger.error("Erro ao ler arquivo %s: %s", args.input, e, exc_info=True)
             sys.exit(1)

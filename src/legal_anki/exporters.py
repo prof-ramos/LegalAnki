@@ -146,10 +146,13 @@ def export_to_tsv(
 
     lines = []
 
+    tab = "\t"
     for card in cards:
         tags_str = _sanitize_text(" ".join(card.tags))
         # TSV simples: front\tback\ttags
-        line = f"{_sanitize_text(card.front, separator_char='\t')}\t{_sanitize_text(card.back, separator_char='\t')}\t{tags_str}"
+        front = _sanitize_text(card.front, separator_char=tab)
+        back = _sanitize_text(card.back, separator_char=tab)
+        line = f"{front}\t{back}\t{tags_str}"
         lines.append(line)
 
     tsv_content = "\n".join(lines)
@@ -262,15 +265,8 @@ def export_to_apkg(
         name=deck_name,
     )
 
-    # Cache de modelos para evitar recriação
-    models_cache: dict[str, genanki.Model] = {}
-
     for card in cards:
-        # Obtém ou cria modelo
-        if card.card_type not in models_cache:
-            models_cache[card.card_type] = get_model_for_card_type(card.card_type)
-
-        model = models_cache[card.card_type]
+        model = get_model_for_card_type(card.card_type)
         fields = map_card_to_fields(card)
 
         note = genanki.Note(
@@ -312,14 +308,8 @@ def export_to_apkg_base64(
         name=deck_name,
     )
 
-    # Cache de modelos
-    models_cache: dict[str, genanki.Model] = {}
-
     for card in cards:
-        if card.card_type not in models_cache:
-            models_cache[card.card_type] = get_model_for_card_type(card.card_type)
-
-        model = models_cache[card.card_type]
+        model = get_model_for_card_type(card.card_type)
         fields = map_card_to_fields(card)
 
         note = genanki.Note(

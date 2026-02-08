@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
 from .config import CardType
@@ -22,8 +23,8 @@ class CardValidationError(Exception):
 def validate_card(
     card: "AnkiCard",
     require_legal_basis: bool = True,
-    min_front_length: int = 10,
-    min_back_length: int = 5,
+    min_front_length: int = 15,
+    min_back_length: int = 20,
 ) -> bool:
     """
     Valida um card gerado pelo LLM.
@@ -59,16 +60,27 @@ def validate_card(
 
     # Validação específica por tipo
     if card.card_type == CardType.CLOZE:
-        if "{{c1::" not in card.front and "{{c2::" not in card.front:
+        cloze_matches = re.findall(r"\{\{c\d+::", card.front)
+        if not cloze_matches:
             errors.append("Card cloze sem marcação de lacuna ({{c1::...}})")
+        elif len(cloze_matches) > 3:
+            errors.append(
+                f"Card cloze com {len(cloze_matches)} lacunas (máximo 3)"
+            )
 
     if card.card_type == CardType.QUESTAO:
-        if not card.extra or not card.extra.get("banca"):
+        extra = card.extra or {}
+        if not extra.get("banca"):
             errors.append("Questão sem banca definida")
+        if not extra.get("ano"):
+            errors.append("Questão sem ano definido")
 
     if card.card_type == CardType.JURISPRUDENCIA:
-        if not card.extra or not card.extra.get("tribunal"):
+        extra = card.extra or {}
+        if not extra.get("tribunal"):
             errors.append("Jurisprudência sem tribunal definido")
+        if not extra.get("tema"):
+            errors.append("Jurisprudência sem tema definido")
 
     # Validação de fundamento legal
     if require_legal_basis:

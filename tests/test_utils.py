@@ -2,7 +2,6 @@
 
 from legal_anki.utils import (
     escape_html,
-    generate_unique_id,
     normalize_tags,
     slugify_tag,
     truncate_text,
@@ -43,6 +42,27 @@ class TestSlugifyTag:
         """Preserva hífens."""
         assert slugify_tag("controle-concentrado") == "controle-concentrado"
 
+    def test_preserves_hierarchical_separator(self):
+        """Preserva separador hierárquico :: do Anki."""
+        assert slugify_tag("dificuldade::medio") == "dificuldade::medio"
+        assert slugify_tag("dificuldade::facil") == "dificuldade::facil"
+
+    def test_hierarchical_with_accents(self):
+        """Normaliza cada segmento preservando ::."""
+        assert (
+            slugify_tag("direito_constitucional::direitos_fundamentais::liberdade")
+            == "direito_constitucional::direitos_fundamentais::liberdade"
+        )
+        assert (
+            slugify_tag("Direito Constitucional::Ação Direta")
+            == "direito_constitucional::acao_direta"
+        )
+
+    def test_hierarchical_empty_segments_removed(self):
+        """Remove segmentos vazios do separador hierárquico."""
+        assert slugify_tag("::medio") == "medio"
+        assert slugify_tag("dificuldade::") == "dificuldade"
+
 
 class TestNormalizeTags:
     """Testes para normalize_tags."""
@@ -72,20 +92,13 @@ class TestNormalizeTags:
         assert len(result) == 2
         assert "" not in result
 
+    def test_preserves_hierarchical_tags(self):
+        """Preserva tags hierárquicas com ::."""
+        tags = ["dificuldade::medio", "direito_constitucional::direitos_fundamentais"]
+        result = normalize_tags(tags)
 
-class TestGenerateUniqueId:
-    """Testes para generate_unique_id."""
-
-    def test_returns_valid_range(self):
-        """Retorna ID no range válido do Anki."""
-        for _ in range(100):
-            id = generate_unique_id()
-            assert 1 << 30 <= id < 1 << 31
-
-    def test_returns_different_values(self):
-        """Retorna valores diferentes."""
-        ids = [generate_unique_id() for _ in range(10)]
-        assert len(set(ids)) > 5  # Pelo menos alguns diferentes
+        assert "dificuldade::medio" in result
+        assert "direito_constitucional::direitos_fundamentais" in result
 
 
 class TestEscapeHtml:
