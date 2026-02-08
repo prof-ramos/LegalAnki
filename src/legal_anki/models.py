@@ -254,12 +254,17 @@ _MODEL_FACTORY = {
 }
 
 
+_model_cache: dict[str, genanki.Model] = {}
+
+
 def get_model_for_card_type(card_type: str) -> genanki.Model:
-    """Retorna o modelo Anki apropriado para o tipo de card."""
-    factory = _MODEL_FACTORY.get(card_type)
-    if not factory:
-        raise ValueError(f"Tipo de card desconhecido: {card_type}")
-    return factory()
+    """Retorna o modelo Anki apropriado para o tipo de card (com cache)."""
+    if card_type not in _model_cache:
+        factory = _MODEL_FACTORY.get(card_type)
+        if not factory:
+            raise ValueError(f"Tipo de card desconhecido: {card_type}")
+        _model_cache[card_type] = factory()
+    return _model_cache[card_type]
 
 
 def get_field_names_for_card_type(card_type: str) -> list[str]:

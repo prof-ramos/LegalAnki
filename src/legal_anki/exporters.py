@@ -265,15 +265,8 @@ def export_to_apkg(
         name=deck_name,
     )
 
-    # Cache de modelos para evitar recriação
-    models_cache: dict[str, genanki.Model] = {}
-
     for card in cards:
-        # Obtém ou cria modelo
-        if card.card_type not in models_cache:
-            models_cache[card.card_type] = get_model_for_card_type(card.card_type)
-
-        model = models_cache[card.card_type]
+        model = get_model_for_card_type(card.card_type)
         fields = map_card_to_fields(card)
 
         note = genanki.Note(
@@ -315,14 +308,8 @@ def export_to_apkg_base64(
         name=deck_name,
     )
 
-    # Cache de modelos
-    models_cache: dict[str, genanki.Model] = {}
-
     for card in cards:
-        if card.card_type not in models_cache:
-            models_cache[card.card_type] = get_model_for_card_type(card.card_type)
-
-        model = models_cache[card.card_type]
+        model = get_model_for_card_type(card.card_type)
         fields = map_card_to_fields(card)
 
         note = genanki.Note(

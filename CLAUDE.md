@@ -30,9 +30,10 @@ uv run python main.py documento.pdf --topic direitos_fundamentais  # CLI (arquiv
 src/legal_anki/
   parsers.py         -> extracao de texto de PDF, DOCX, CSV, TXT (input)
   prompts/system.py  -> system prompt + few-shot (ponto critico de qualidade)
-  generator.py       -> orquestra: prompt -> LLM -> pos-processamento
+  generator.py       -> orquestra: prompt -> LLM -> chunking -> dedup
   validators.py      -> validacao de negocio pos-LLM
-  models.py          -> AnkiCard, CardResponse (Pydantic) + templates genanki
+  models.py          -> AnkiCard, CardResponse (Pydantic) + templates genanki (com cache)
+  serializers.py     -> mapeamento AnkiCard -> campos por tipo (usa CardType enum)
   llm/protocol.py    -> interface LLMClient (Protocol)
   llm/openai_client.py -> implementacao OpenAI + retry (Tenacity)
   exporters.py       -> CSV, TSV, JSON, APKG (output)
@@ -45,8 +46,11 @@ src/legal_anki/
 - **`ANTI_HALLUCINATION_INSTRUCTION`** deve estar sempre ativa — nunca condicionar a flags.
 - **Regras no prompt usam bullet points**, nunca numeracao fixa (evita gaps quando blocos condicionais sao omitidos).
 - **`{{ }}`** no prompt: o template usa `str.format()`, entao chaves literais JSON precisam de escape duplo.
-- **Tag de dificuldade** usa formato hierarquico Anki: `dificuldade::medio` (com `::`, nao `_`).
-- **`test_exporters.py`** tem falhas pre-existentes (f-string com backslash, incompativel com Python < 3.12).
+- **Tag de dificuldade** usa formato hierarquico Anki: `dificuldade::medio` (com `::`, nao `_`). O `slugify_tag` preserva `::` tratando cada segmento isoladamente.
+- **`settings` e singleton instanciado no import** de `config.py`. Para testes, usar mocks em vez de alterar o singleton. Se precisar de DI, injetar `llm_client` em `generate_cards()`.
+- **`basic_reversed`** existe no enum `CardType` e no factory `_MODEL_FACTORY`, mas o LLM nao gera esse tipo — ele e usado apenas para importacao/exportacao manual.
+- **Textos longos**: `generator.py` divide automaticamente em chunks de ~50k chars e distribui `max_cards` entre eles, com deduplicacao ao final.
+- **Versao**: `__init__.py` le de `importlib.metadata`; `config.py:skill_version` herda automaticamente.
 - **Unica variavel obrigatoria**: `OPENAI_API_KEY`. Ver `.env.example` para as demais.
 
 ## Tipos de Card
@@ -62,5 +66,7 @@ src/legal_anki/
 ## Testes
 
 - Usar `MockLLMClient` (em `test_llm_client.py`) para testar geracao sem chamar API real
+- `test_anki_connect.py` mocka `httpx.post` para testar integracao sem Anki Desktop
 - Fixtures em `conftest.py`: `sample_cards` (4 validos), `sample_card_basic`, `sample_card_invalid`
 - `build_system_prompt()` usa keyword-only args e valida `difficulty` contra `_VALID_DIFFICULTIES`
+- `get_model_for_card_type()` cacheia modelos genanki — nao recria a cada chamada

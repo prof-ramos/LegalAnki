@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from .config import CardType
+
 if TYPE_CHECKING:
     from .models import AnkiCard
 
@@ -20,13 +22,13 @@ def map_card_to_fields(card: "AnkiCard") -> list[str]:
     """
     extra = card.extra or {}
 
-    if card.card_type == "cloze":
+    if card.card_type == CardType.CLOZE:
         return [
             card.front,  # Text (com marcações cloze)
             extra.get("fundamento", ""),  # Extra
         ]
 
-    if card.card_type == "questao":
+    if card.card_type == CardType.QUESTAO:
         return [
             card.front,
             card.back,
@@ -36,7 +38,7 @@ def map_card_to_fields(card: "AnkiCard") -> list[str]:
             extra.get("fundamento", ""),
         ]
 
-    if card.card_type == "jurisprudencia":
+    if card.card_type == CardType.JURISPRUDENCIA:
         return [
             card.front,
             card.back,
