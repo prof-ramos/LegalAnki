@@ -61,14 +61,27 @@ def validate_card(
     if card.card_type == CardType.CLOZE:
         if "{{c1::" not in card.front and "{{c2::" not in card.front:
             errors.append("Card cloze sem marcação de lacuna ({{c1::...}})")
+        else:
+            # Verifica máximo de 3 clozes por card
+            import re
+
+            cloze_count = len(re.findall(r"\{\{c\d+::", card.front))
+            if cloze_count > 3:
+                errors.append(
+                    f"Card cloze com {cloze_count} lacunas (máximo 3)"
+                )
 
     if card.card_type == CardType.QUESTAO:
         if not card.extra or not card.extra.get("banca"):
             errors.append("Questão sem banca definida")
+        if not card.extra or not card.extra.get("ano"):
+            errors.append("Questão sem ano definido")
 
     if card.card_type == CardType.JURISPRUDENCIA:
         if not card.extra or not card.extra.get("tribunal"):
             errors.append("Jurisprudência sem tribunal definido")
+        if not card.extra or not card.extra.get("tema"):
+            errors.append("Jurisprudência sem tema definido")
 
     # Validação de fundamento legal
     if require_legal_basis:

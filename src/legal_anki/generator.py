@@ -146,8 +146,8 @@ def _postprocess_cards(
         if topic_tag and topic_tag not in tags:
             tags.insert(0, topic_tag)
 
-        # Adiciona tag de dificuldade
-        diff_tag = f"dificuldade_{difficulty}"
+        # Adiciona tag de dificuldade (formato hierárquico do Anki)
+        diff_tag = f"dificuldade::{difficulty}"
         if diff_tag not in tags:
             tags.append(diff_tag)
 

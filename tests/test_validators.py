@@ -113,6 +113,70 @@ class TestValidateCard:
 
         assert "sem banca" in str(exc_info.value)
 
+    def test_questao_without_ano_fails(self):
+        """Card questão sem ano deve falhar."""
+
+        card = AnkiCard(
+            front="(CESPE) O direito ao silêncio é absoluto?",
+            back="Não, admite exceções conforme art. 5º, LXIII, CF/88.",
+            card_type="questao",
+            tags=["direitos"],
+            extra={"banca": "CESPE", "fundamento": "Art. 5º, LXIII"},
+        )
+
+        with pytest.raises(CardValidationError) as exc_info:
+            validate_card(card)
+
+        assert "sem ano" in str(exc_info.value)
+
+    def test_jurisprudencia_without_tema_fails(self):
+        """Card jurisprudência sem tema deve falhar."""
+
+        card = AnkiCard(
+            front="Qual o entendimento do STF sobre uso de algemas?",
+            back="Só é lícito em casos de resistência ou fundado receio de fuga.",
+            card_type="jurisprudencia",
+            tags=["stf"],
+            extra={
+                "tribunal": "STF",
+                "fundamento_legal": "Súmula Vinculante 11",
+            },
+        )
+
+        with pytest.raises(CardValidationError) as exc_info:
+            validate_card(card)
+
+        assert "sem tema" in str(exc_info.value)
+
+    def test_cloze_with_too_many_deletions_fails(self):
+        """Card cloze com mais de 3 lacunas deve falhar."""
+
+        card = AnkiCard(
+            front="O {{c1::STF}} é composto por {{c2::11}} ministros, nomeados pelo {{c3::Presidente}} após {{c4::aprovação}} do Senado.",
+            back="Composição do STF",
+            card_type="cloze",
+            tags=["stf"],
+            extra={"fundamento": "Art. 101, CF/88"},
+        )
+
+        with pytest.raises(CardValidationError) as exc_info:
+            validate_card(card)
+
+        assert "4 lacunas" in str(exc_info.value)
+
+    def test_cloze_with_max_deletions_passes(self):
+        """Card cloze com exatamente 3 lacunas deve passar."""
+
+        card = AnkiCard(
+            front="O {{c1::STF}} é composto por {{c2::11}} ministros nomeados pelo {{c3::Presidente}}.",
+            back="Composição do STF conforme art. 101, CF/88.",
+            card_type="cloze",
+            tags=["stf"],
+            extra={"fundamento": "Art. 101, CF/88"},
+        )
+
+        assert validate_card(card) is True
+
 
 class TestValidateCardsBatch:
     """Testes para validate_cards_batch."""
